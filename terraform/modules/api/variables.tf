@@ -32,7 +32,7 @@ variable "metadata_table" {
   nullable = false
 }
 
-variable "inference_queue" {
+variable "jobs_queue" {
   type = object({
     name = string
     arn  = string
