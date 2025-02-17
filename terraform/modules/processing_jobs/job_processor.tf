@@ -2,8 +2,6 @@
   lambda_name = "data-extraction"
 }
 data "aws_region" "current" {}
-data "aws_organizations_organization" "this" {}
-
 module "lambda_router" {
   source        = "terraform-aws-modules/lambda/aws"
   function_name = "${var.project_name}-${var.environment}-${local.lambda_name}"
