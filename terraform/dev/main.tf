@@ -7,7 +7,7 @@ module "api" {
   environment           = var.environment
   project_name          = local.project_name
   lambda_storage_bucket = data.aws_s3_bucket.infra_storage.bucket
-  jobs_queue       = module.processing_jobs.jobs_queue
+  jobs_queue            = module.processing_jobs.jobs_queue
   jobs_status_table     = module.processing_jobs.jobs_status_table
   metadata_table        = module.storage.file_metadata_table
   output_bucket         = module.storage.file_process_output_bucket
