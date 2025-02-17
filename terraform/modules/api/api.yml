@@ -1,0 +1,383 @@
+﻿openapi: 3.0.0
+info:
+  title: File Storage API
+  description: API for managing files in S3 through Lambda with Cognito authentication
+  version: 1.0.0
+components:
+  securitySchemes:
+    UserPool:
+      type: "apiKey"
+      name: "Authorization"
+      in: "header"
+      "x-amazon-apigateway-authtype": "cognito_user_pools"
+      "x-amazon-apigateway-authorizer":
+        type: "cognito_user_pools"
+        providerARNs: ${cognito_user_pool_arns}
+paths:
+  /files:
+    get:
+      summary: List all files for the authenticated user
+      security:
+        - UserPool: []
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved file list
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+
+    post:
+      summary: Upload a new file
+      security:
+        - UserPool: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: File uploaded successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+
+  /files/{filename}:
+    delete:
+      summary: Delete a specific file
+      security:
+        - UserPool: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: File deleted successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "404":
+          description: File not found
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+  /jobs:
+    post:
+      summary: Submit a batch inference job
+      security:
+        - UserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                prompt:
+                  type: string
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Job submitted successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+    get:
+      summary: List all jobs for the authenticated user
+      security:
+        - UserPool: []
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved job list
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+  /jobs/{job_id}/download/{file_id}:
+    get:
+      summary: Download a specific file
+      security:
+        - UserPool: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: string
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved file
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "404":
+          description: File not found
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+
+x-amazon-apigateway-binary-media-types:
+  - "*/*"
