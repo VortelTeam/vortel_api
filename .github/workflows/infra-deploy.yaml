@@ -38,6 +38,10 @@ jobs:
         working-directory: ./terraform/dev
         run: terraform init
 
+      - name: Terraform Validate
+        working-directory: ./terraform/dev
+        run: terraform validate
+
       - name: Terraform Apply
         id: terraform
         working-directory: ./terraform/dev

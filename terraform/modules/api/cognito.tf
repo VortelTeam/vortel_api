@@ -52,7 +52,7 @@
 resource "aws_cognito_user_pool_client" "client" {
   name = "${var.project_name}-${var.environment}-client"
 
-  user_pool_id = aws_cognito_user_pool.user_pool.id
+  user_pool_id = aws_cognito_user_pool.this.id
 
   generate_secret = false # Set to true if you need a client secret
   explicit_auth_flows = [
