@@ -12,7 +12,7 @@ module "lambda_router" {
   runtime       = "python3.11"
   timeout       = 900
   publish       = true
-  source_path   = "${path.root}/../../lambdas/inference_job_handler"
+  source_path   = "${path.root}/../../lambdas/data_extraction"
 
   layers                       = ["arn:aws:lambda:${data.aws_region.current.name}:017000801446:layer:AWSLambdaPowertoolsPythonV2:79"]
   store_on_s3                  = true
