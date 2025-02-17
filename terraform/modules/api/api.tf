@@ -138,6 +138,7 @@ resource "aws_iam_role_policy" "cloudwatch" {
 
 resource "aws_api_gateway_account" "this" {
   cloudwatch_role_arn = aws_iam_role.cloudwatch.arn
+  depends_on          = [aws_iam_role_policy.cloudwatch] # Ensure policy is attached before use
 }
 
 resource "aws_api_gateway_method_settings" "all" {
