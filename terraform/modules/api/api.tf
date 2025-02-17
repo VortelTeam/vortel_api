@@ -91,6 +91,7 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
   retention_in_days = 365
 }
 
+
 resource "aws_iam_role" "cloudwatch" {
   name = "${var.project_name}-${var.environment}-api-cloudwatch-role"
 
@@ -100,8 +101,9 @@ resource "aws_iam_role" "cloudwatch" {
       {
         Action = "sts:AssumeRole"
         Effect = "Allow"
+        Sid    = ""
         Principal = {
-          Service = ["apigateway.amazonaws.com", "logs.amazonaws.com"]
+          Service = ["apigateway.amazonaws.com", "logs.amazonaws.com", "lambda.amazonaws.com"]
         }
       }
     ]
@@ -138,7 +140,7 @@ resource "aws_iam_role_policy" "cloudwatch" {
 
 resource "aws_api_gateway_account" "this" {
   cloudwatch_role_arn = aws_iam_role.cloudwatch.arn
-  depends_on          = [aws_iam_role_policy.cloudwatch] # Ensure policy is attached before use
+  depends_on          = [aws_iam_role_policy.cloudwatch]
 }
 
 resource "aws_api_gateway_method_settings" "all" {
