@@ -1,6 +1,6 @@
 ﻿terraform {
   backend "s3" {
-    bucket = "vortel-backend-storage"
+    bucket = "vortel-backend-storage-2"
     key    = "terraform/terraform.tfstate"
     region = "ca-central-1"
   }
