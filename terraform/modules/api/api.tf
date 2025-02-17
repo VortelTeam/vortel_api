@@ -72,12 +72,12 @@ resource "aws_api_gateway_stage" "this" {
       corsOrigin              = "$context.identity.origin"
       corsRequestHeaders      = "$input.params().header.get('Access-Control-Request-Headers')"
       corsRequestMethod       = "$input.params().header.get('Access-Control-Request-Method')"
-      "responseHeaders"       = "$context.responseHeaders.Access-Control-Allow-Headers"
-      "responseOrigin"        = "$context.responseHeaders.Access-Control-Allow-Origin"
-      "responseMethods"       = "$context.responseHeaders.Access-Control-Allow-Methods"
-      "responseCredentials"   = "$context.responseHeaders.Access-Control-Allow-Credentials"
-      "responseMaxAge"        = "$context.responseHeaders.Access-Control-Max-Age"
-      "responseExposeHeaders" = "$context.responseHeaders.Access-Control-Expose-Headers"
+      responseHeaders         = "$context.responseHeaders.Access-Control-Allow-Headers"
+      responseOrigin          = "$context.responseHeaders.Access-Control-Allow-Origin"
+      responseMethods         = "$context.responseHeaders.Access-Control-Allow-Methods"
+      responseCredentials     = "$context.responseHeaders.Access-Control-Allow-Credentials"
+      responseMaxAge          = "$context.responseHeaders.Access-Control-Max-Age"
+      responseExposeHeaders   = "$context.responseHeaders.Access-Control-Expose-Headers"
     })
   }
 
@@ -101,7 +101,7 @@ resource "aws_iam_role" "cloudwatch" {
         Action = "sts:AssumeRole"
         Effect = "Allow"
         Principal = {
-          Service = ["apigateway.amazonaws.com", "logs.amazonaws.com"]
+          Service = "apigateway.amazonaws.com"
         }
       }
     ]

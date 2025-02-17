@@ -23,6 +23,14 @@ module "lambda_router" {
   attach_policy_statements = true
 
   policy_statements = {
-    
+    bedrock = {
+      effect = "Allow",
+      actions = [
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:PutObject"
+      ],
+      resources = ["*"]
+    }
   }
 }
