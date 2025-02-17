@@ -96,7 +96,7 @@ module "lambda_router" {
 }
 
 resource "aws_lambda_event_source_mapping" "sqs" {
-  event_source_arn                   = var.inference_queue.arn
+  event_source_arn                   = aws_sqs_queue.jobs_queue.arn
   function_name                      = module.lambda_router.lambda_function_name
   batch_size                         = 1
   maximum_batching_window_in_seconds = 0
