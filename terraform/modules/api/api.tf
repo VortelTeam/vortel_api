@@ -101,7 +101,7 @@ resource "aws_iam_role" "cloudwatch" {
         Action = "sts:AssumeRole"
         Effect = "Allow"
         Principal = {
-          Service = "apigateway.amazonaws.com"
+          Service = ["apigateway.amazonaws.com", "logs.amazonaws.com"]
         }
       }
     ]
