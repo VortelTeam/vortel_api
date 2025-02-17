@@ -84,7 +84,7 @@ module "lambda_router" {
     }
     bedrock = {
       effect    = "Allow"
-      actions   = ["bedrock:InvokeModel"]
+      actions   = ["bedrock:*"]
       resources = ["*"]
     }
   }

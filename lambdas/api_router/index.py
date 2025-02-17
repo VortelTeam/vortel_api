@@ -27,7 +27,7 @@ app = APIGatewayRestResolver()
 s3_client = boto3.client("s3")
 dynamodb = boto3.resource("dynamodb")
 metadata_table = dynamodb.Table(os.environ["METADATA_TABLE"])
-job_table = dynamodb.Table(os.environ["INFERENCE_JOBS_TABLE"])
+job_table = dynamodb.Table(os.environ["JOBS_TABLE"])
 sqs_client = boto3.client("sqs")
 INPUT_BUCKET_NAME = os.environ["INPUT_BUCKET_NAME"]
 OUTPUT_BUCKET_NAME = os.environ["OUTPUT_BUCKET_NAME"]
@@ -222,7 +222,7 @@ def create_batch_inference_job():
         }
 
         sqs_client.send_message(
-            QueueUrl=os.environ["INFERENCE_QUEUE_URL"],
+            QueueUrl=os.environ["JOBS_QUEUE_URL"],
             MessageBody=json.dumps(message_body),
         )
     except ClientError as e:
