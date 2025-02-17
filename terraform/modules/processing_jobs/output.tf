@@ -1,7 +1,7 @@
 ﻿output "jobs_queue" {
   value = {
-    name = aws_sqs_queue.batch_inference_queue.name
-    arn  = aws_sqs_queue.batch_inference_queue.arn
+    name = aws_sqs_queue.jobs_queue.name
+    arn  = aws_sqs_queue.jobs_queue.arn
   }
 }
 

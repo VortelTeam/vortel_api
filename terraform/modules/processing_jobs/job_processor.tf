@@ -22,7 +22,7 @@ module "lambda_router" {
     INPUT_BUCKET            = var.user_files_bucket.name
     OUTPUT_BUCKET           = var.output_bucket.name
     POWERTOOLS_SERVICE_NAME = "${var.project_name}-${var.environment}-${local.lambda_name}"
-    JOBS_TABLE              = var.jobs_status_table.name
+    JOBS_TABLE              = aws_dynamodb_table.inference_jobs_status_table.name
   }
 
   allowed_triggers = {
@@ -32,7 +32,7 @@ module "lambda_router" {
     }
     SQS = {
       service    = "sqs"
-      source_arn = var.jobs_queue.arn
+      source_arn = aws_sqs_queue.jobs_queue.arn
     }
   }
 
@@ -72,7 +72,7 @@ module "lambda_router" {
         "sqs:GetQueueAttributes"
       ],
       resources = [
-        var.jobs_queue.arn
+        aws_sqs_queue.jobs_queue.arn
       ]
     }
     dynamodb_jobs_status = {
@@ -83,8 +83,8 @@ module "lambda_router" {
         "dynamodb:UpdateItem"
       ],
       resources = [
-        var.jobs_status_table.arn,
-        "${var.jobs_status_table.arn}/index/*"
+        aws_dynamodb_table.inference_jobs_status_table.arn,
+        "${aws_dynamodb_table.inference_jobs_status_table.arn}/index/*"
       ]
     }
     bedrock = {
