@@ -1,5 +1,5 @@
 ﻿locals {
-  lambda_name = "inference-lambda"
+  lambda_name = "data-extraction"
 }
 data "aws_region" "current" {}
 data "aws_organizations_organization" "this" {}
@@ -22,7 +22,7 @@ module "lambda_router" {
     INPUT_BUCKET            = var.user_files_bucket.name
     OUTPUT_BUCKET           = var.output_bucket.name
     POWERTOOLS_SERVICE_NAME = "${var.project_name}-${var.environment}-${local.lambda_name}"
-    INFERENCE_JOBS_TABLE    = var.jobs_status_table.name
+    JOBS_TABLE              = var.jobs_status_table.name
   }
 
   allowed_triggers = {
@@ -32,7 +32,7 @@ module "lambda_router" {
     }
     SQS = {
       service    = "sqs"
-      source_arn = var.inference_queue.arn
+      source_arn = var.jobs_queue.arn
     }
   }
 
@@ -72,7 +72,7 @@ module "lambda_router" {
         "sqs:GetQueueAttributes"
       ],
       resources = [
-        var.inference_queue.arn
+        var.jobs_queue.arn
       ]
     }
     dynamodb_jobs_status = {

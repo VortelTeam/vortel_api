@@ -28,5 +28,12 @@ variable "output_bucket" {
     name = string
     arn  = string
   })
+}
 
+variable "jobs_status_table" {
+  type = object({
+    name = string
+    arn  = string
+  })
+  nullable = false
 }
