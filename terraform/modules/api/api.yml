@@ -81,44 +81,41 @@ paths:
               method.response.header.Access-Control-Allow-Credentials: "'true'"
 
     post:
-      summary: Upload a new file
+      summary: Get S3 pre-signed upload URL
       security:
         - UserPool: []
       requestBody:
         required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
               type: object
+              required: ["filename", "contentType"]
               properties:
-                file:
+                filename:
                   type: string
-                  format: binary
+                  description: "Name of the file to upload"
+                contentType:
+                  type: string
+                  description: "MIME type of the file"
       x-amazon-apigateway-integration:
         uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
         httpMethod: POST
         type: aws_proxy
-        passthroughBehavior: when_no_match
       responses:
         "200":
-          description: File uploaded successfully
-          headers:
-            Access-Control-Allow-Origin:
+          description: Pre-signed URL generated successfully
+          content:
+            application/json:
               schema:
-                type: "string"
-            Access-Control-Allow-Headers:
-              schema:
-                type: "string"
-            Access-Control-Allow-Methods:
-              schema:
-                type: "string"
-            Access-Control-Allow-Credentials:
-              schema:
-                type: "boolean"
-        "403":
-          description: Unauthorized
-        "500":
-          description: Internal server error
+                type: object
+                properties:
+                  uploadUrl:
+                    type: string
+                    description: "Pre-signed S3 URL for upload"
+                  key:
+                    type: string
+                    description: "S3 object key"
 
   /files/{filename}:
     delete:
