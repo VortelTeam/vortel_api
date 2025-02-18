@@ -98,7 +98,7 @@ paths:
           description: MIME type of the file
           required: true
       x-amazon-apigateway-integration:
-        uri: arn:aws:apigateway:\${region}:lambda:path/2015-03-31/functions/\${lambda_arn}/invocations
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
         httpMethod: POST
         type: aws_proxy
         payloadFormatVersion: "2.0"
