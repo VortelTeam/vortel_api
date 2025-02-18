@@ -63,39 +63,47 @@ def list_files():
         raise ServiceError(msg="Failed to retrieve files")
 
 
-@app.post("/files")
+@app.get("/upload-url")
 @tracer.capture_method
-def upload_file():
+def get_upload_url():
+    """Generate a pre-signed URL for S3 file upload"""
     user_id = app.current_event.request_context.authorizer.claims.get("sub")
     if not user_id:
         raise UnauthorizedError("User ID not found in claims")
 
-    if app.current_event.is_base64_encoded:
-        # Decode base64 and then decode bytes to string
-        file_content = base64.b64decode(app.current_event.body).decode("utf-8")
-    else:
-        file_content = app.current_event.body
+    # Get query parameters
+    query_params = app.current_event.query_string_parameters or {}
+    filename = query_params.get("fileName")
+    content_type = query_params.get("contentType")
 
-    # Check file size
-    if len(file_content) > MAX_FILE_SIZE:
-        raise BadRequestError(f"File too large. Maximum size is {MAX_FILE_SIZE} bytes")
-
-    content_type = app.current_event.headers.get(
-        "content-type", "application/octet-stream"
-    )
-    filename = app.current_event.headers.get("filename", "unnamed-file")
+    if not filename or not content_type:
+        raise BadRequestError("fileName and contentType are required query parameters")
 
     # Generate file_id as the hash of the filename
     file_id = hashlib.sha256(filename.encode()).hexdigest()[0:8]
     key = f"{user_id}/{file_id}"
 
     try:
-        # Upload to S3
-        s3_client.put_object(
+        # Generate pre-signed URL for S3 upload
+        s3_client = boto3.client("s3")
+
+        # Define conditions for the upload
+        conditions = [
+            {"bucket": INPUT_BUCKET_NAME},
+            ["content-length-range", 0, MAX_FILE_SIZE],
+            {"key": key},
+            {"content-type": content_type},
+        ]
+
+        # Generate pre-signed POST URL
+        presigned_post = s3_client.generate_presigned_post(
             Bucket=INPUT_BUCKET_NAME,
             Key=key,
-            Body=file_content,
-            ContentType=content_type,
+            Fields={
+                "content-type": content_type,
+            },
+            Conditions=conditions,
+            ExpiresIn=3600,  # URL expires in 1 hour
         )
 
         # Prepare metadata
@@ -104,27 +112,35 @@ def upload_file():
             "file_id": file_id,
             "filename": filename,
             "content_type": content_type,
-            "size": len(file_content),
-            "last_modified": int(time.time()),
+            "status": "pending",  # Add status to track upload completion
+            "created_at": int(time.time()),
         }
 
-        # Upsert in DynamoDB
+        # Store pending metadata in DynamoDB
         metadata_table.put_item(
             Item=metadata,
         )
 
+        # Return pre-signed URL and metadata
+        response_data = {
+            "uploadUrl": presigned_post["url"],
+            "fields": presigned_post["fields"],
+            "fileId": file_id,
+            "metadata": metadata,
+        }
+
         return Response(
             status_code=200,
             headers=CORS_HEADERS,
-            body=json.dumps(metadata),
+            body=json.dumps(response_data),
         )
 
     except ClientError as e:
         error_code = e.response["Error"]["Code"]
-        logger.error(f"AWS error during upload: {error_code}")
+        logger.error(f"AWS error generating pre-signed URL: {error_code}")
         if error_code == "NoSuchBucket":
             raise NotFoundError("Storage bucket not found")
-        raise ServiceError(msg="Failed to upload file")
+        raise ServiceError(msg="Failed to generate upload URL")
 
 
 @app.delete("/files/<file_id>")

@@ -79,29 +79,29 @@ paths:
               method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
               method.response.header.Access-Control-Allow-Origin: "'*'"
               method.response.header.Access-Control-Allow-Credentials: "'true'"
-
-    post:
-      summary: Get S3 pre-signed upload URL
+  /upload-url:
+    get:
+      summary: Get pre-signed URL for file upload
       security:
         - UserPool: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: ["filename", "contentType"]
-              properties:
-                filename:
-                  type: string
-                  description: "Name of the file to upload"
-                contentType:
-                  type: string
-                  description: "MIME type of the file"
+      parameters:
+        - in: query
+          name: fileName
+          schema:
+            type: string
+          description: Original file name for the upload
+          required: true
+        - in: query
+          name: contentType
+          schema:
+            type: string
+          description: MIME type of the file
+          required: true
       x-amazon-apigateway-integration:
-        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        uri: arn:aws:apigateway:\${region}:lambda:path/2015-03-31/functions/\${lambda_arn}/invocations
         httpMethod: POST
         type: aws_proxy
+        payloadFormatVersion: "2.0"
       responses:
         "200":
           description: Pre-signed URL generated successfully
@@ -112,10 +112,19 @@ paths:
                 properties:
                   uploadUrl:
                     type: string
-                    description: "Pre-signed S3 URL for upload"
-                  key:
+                    example: "https://my-bucket.s3.amazonaws.com/..."
+                  fileId:
                     type: string
-                    description: "S3 object key"
+                    example: "123e4567-e89b-12d3-a456-426614174000"
+                  fields:
+                    type: object
+                    description: Additional fields needed for S3 form upload
+        "400":
+          description: Bad request
+        "403":
+          description: Unauthorized
+        "500":
+          description: Internal server error
 
   /files/{filename}:
     delete:
