@@ -21,4 +21,14 @@ module "user_files_storage" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+
+  cors_rule = [
+    {
+      allowed_headers = ["*"]
+      allowed_methods = ["PUT", "POST"]
+      allowed_origins = ["https://your-domain.com"]
+      expose_headers  = ["ETag"]
+      max_age_seconds = 3000
+    }
+  ]
 }
