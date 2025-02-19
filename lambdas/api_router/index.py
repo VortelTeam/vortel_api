@@ -321,7 +321,6 @@ def create_data_extraction_job():
             {
                 "job_id": job_id,
                 "status": "PENDING",
-                "prompt": prompt,
                 "created_at": current_time,
                 "input_files": files,
             }

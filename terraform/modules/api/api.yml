@@ -119,7 +119,7 @@ paths:
         type: aws_proxy
         payloadFormatVersion: "2.0"
       responses:
-        "200":
+        "204":
           description: Pre-signed URL generated successfully
           content:
             application/json:
@@ -255,8 +255,6 @@ paths:
                   type: array
                   items:
                     type: string
-                prompt:
-                  type: string
       x-amazon-apigateway-integration:
         uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
         httpMethod: POST
