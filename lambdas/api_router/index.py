@@ -31,13 +31,23 @@ sqs_client = boto3.client("sqs")
 INPUT_BUCKET_NAME = os.environ["INPUT_BUCKET_NAME"]
 OUTPUT_BUCKET_NAME = os.environ["OUTPUT_BUCKET_NAME"]
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+MAX_FILES_PER_JOB = 50  # New cost control parameter
+MAX_FILES_PER_LIST = 100  # Max files per list operation
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "OPTIONS,POST,GET, DELETE",
+    "Access-Control-Allow-Methods": "OPTIONS,POST,GET,DELETE",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Credentials": "true",
 }
+
+
+def _truncate_metadata(metadata: Dict[str, str]) -> Dict[str, str]:
+    """Truncate metadata to only include essential fields."""
+    return {
+        "filename": metadata.get("filename", ""),
+        "content_type": metadata.get("content-type", ""),
+    }
 
 
 @app.get("/files")
@@ -48,46 +58,56 @@ def list_files():
         raise UnauthorizedError("User ID not found in claims")
 
     try:
-        # List all objects for the user
-        response = s3_client.list_objects_v2(
-            Bucket=INPUT_BUCKET_NAME, Prefix=f"{user_id}/"
+        # Get pagination parameters from query string
+        page_size = min(
+            int(app.current_event.get_query_string_value("limit", "100")),
+            MAX_FILES_PER_LIST,
         )
+        continuation_token = app.current_event.get_query_string_value(
+            "continuationToken"
+        )
+
+        # List objects with pagination
+        list_args = {
+            "Bucket": INPUT_BUCKET_NAME,
+            "Prefix": f"{user_id}/",
+            "MaxKeys": page_size,
+        }
+        if continuation_token:
+            list_args["ContinuationToken"] = continuation_token
+
+        response = s3_client.list_objects_v2(**list_args)
 
         files = []
         if "Contents" not in response:
             return Response(
                 status_code=200,
                 headers=CORS_HEADERS,
-                body=json.dumps([]),
+                body=json.dumps(
+                    {
+                        "files": [],
+                        "continuationToken": response.get("NextContinuationToken"),
+                    }
+                ),
             )
 
         for obj in response["Contents"]:
             key = obj["Key"]
-            # Skip directory-like entries
             if key == f"{user_id}/":
                 continue
 
             try:
-                # Get object metadata
+                # Get object metadata from S3
                 head_response = s3_client.head_object(Bucket=INPUT_BUCKET_NAME, Key=key)
-                metadata = head_response["Metadata"]
-
-                # Process metadata
-                file_metadata = {}
-                for k, v in metadata.items():
-                    if k.startswith("x-amz-meta-"):
-                        file_metadata[k[11:]] = v
-                    else:
-                        file_metadata[k] = v
+                metadata = _truncate_metadata(head_response.get("Metadata", {}))
 
                 files.append(
                     {
                         "file_id": key.split("/")[1],
-                        "filename": file_metadata.get("filename"),
+                        "filename": metadata.get("filename"),
                         "content_type": head_response.get("ContentType", ""),
                         "size": obj["Size"],
                         "last_modified": obj["LastModified"].isoformat(),
-                        "metadata": file_metadata,
                     }
                 )
             except ClientError as e:
@@ -96,7 +116,12 @@ def list_files():
         return Response(
             status_code=200,
             headers=CORS_HEADERS,
-            body=json.dumps(files),
+            body=json.dumps(
+                {
+                    "files": files,
+                    "continuationToken": response.get("NextContinuationToken"),
+                }
+            ),
         )
     except ClientError as e:
         logger.exception("Failed to list files from S3")
@@ -137,9 +162,8 @@ def create_upload_url():
             "filename": filename,
             "created-at": str(int(time.time())),
         }
-
         # Combine with client metadata
-        all_metadata = {**server_metadata, **client_metadata}
+        all_metadata = _truncate_metadata({**server_metadata, **client_metadata})
 
         # Prepare S3 upload fields and conditions
         fields = {"content-type": content_type}
@@ -243,75 +267,57 @@ def create_data_extraction_job():
     if not user_id:
         raise UnauthorizedError("User ID not found in claims")
 
-    job_id = str(uuid.uuid4())
-
     # Validate request body
-    if not app.current_event.body:
-        raise BadRequestError("Request body is required")
-
     body = app.current_event.json_body
+    file_list = body.get("files", [])
 
-    try:
-        file_list = body.get("files")
-    except json.JSONDecodeError:
-        raise BadRequestError("Invalid JSON format in request body")
+    if len(file_list) > MAX_FILES_PER_JOB:
+        raise BadRequestError(f"Exceeded maximum of {MAX_FILES_PER_JOB} files per job")
 
-    if not isinstance(file_list, list):
-        raise BadRequestError("Request body must be a list of file IDs")
-
-    if not file_list:
-        raise BadRequestError("File list cannot be empty")
-
-    # Retrieve files
-    files = retrieve_files(user_id, file_list)
-    if not files:
-        raise NotFoundError("None of the specified files were found")
-
-    # Send SQS message
-    try:
-        message_body = {
-            "user_id": user_id,
-            "job_id": job_id,
-            "job_status": "PENDING",
-            "input_files": files,
-        }
-
-        sqs_client.send_message(
-            QueueUrl=os.environ["JOBS_QUEUE_URL"],
-            MessageBody=json.dumps(message_body),
-        )
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        logger.error(f"SQS error: {error_code}")
-        if error_code == "QueueDoesNotExist":
-            raise NotFoundError("Job queue not available")
-        elif error_code == "InvalidMessageContents":
-            raise BadRequestError("Invalid message format")
-        raise ServiceError(msg="Failed to queue job")
-
-    # Write job to DynamoDB
-    try:
-        current_time = int(time.time())
-        job_table.put_item(
-            Item={
-                "user_id": user_id,
-                "job_id": job_id,
-                "job_status": "PENDING",
-                "input_files": files,
-                "created_at": current_time,
-                "updated_at": current_time,
-                "job_error": "",
-            }
-        )
-    except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        logger.error(f"DynamoDB error while creating job: {e}")
-        if error_code == "ResourceNotFoundException":
-            raise NotFoundError("Jobs table not found")
-        elif error_code == "ProvisionedThroughputExceededException":
-            raise ServiceError(
-                msg="Service is currently overloaded, please try again later"
+    # Retrieve and validate files
+    files = []
+    for file_id in file_list[:MAX_FILES_PER_JOB]:  # Enforce max files
+        s3_key = f"{user_id}/{file_id}"
+        try:
+            head_response = s3_client.head_object(Bucket=INPUT_BUCKET_NAME, Key=s3_key)
+            metadata = _truncate_metadata(head_response.get("Metadata", {}))
+            files.append(
+                {
+                    "file_id": file_id,
+                    "filename": metadata.get("filename"),
+                }
             )
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "404":
+                logger.error(f"Error retrieving file {file_id}: {str(e)}")
+
+    if not files:
+        raise NotFoundError("No valid files found")
+
+    # Create job record with minimal data
+    job_id = str(uuid.uuid4())
+    current_time = int(time.time())
+    dynamo_item = {
+        "user_id": user_id,
+        "job_id": job_id,
+        "job_status": "PENDING",
+        "file_ids": [
+            f["file_id"] for f in files
+        ],  # Store only file IDs for quick lookup
+        "created_at": current_time,
+        "updated_at": current_time,
+        "job_error": "",
+    }
+
+    # Check item size
+    item_size = len(json.dumps(dynamo_item).encode("utf-8"))
+    if item_size > 400 * 1024:  # DynamoDB 400KB limit
+        raise BadRequestError("Job request too large")
+
+    try:
+        job_table.put_item(Item=dynamo_item)
+    except ClientError as e:
+        logger.error(f"DynamoDB error while creating job: {e}")
         raise ServiceError(msg="Failed to create job record")
 
     return Response(
@@ -336,13 +342,31 @@ def list_jobs():
         raise UnauthorizedError("User ID not found in claims")
 
     try:
-        # Retrieve all jobs for the user
-        response = job_table.query(KeyConditionExpression=Key("user_id").eq(user_id))
+        # Add pagination support
+        limit = min(int(app.current_event.get_query_string_value("limit", "100")), 100)
+        exclusive_start_key = json.loads(
+            app.current_event.get_query_string_value("exclusiveStartKey", "null")
+        )
+
+        query_args = {
+            "KeyConditionExpression": Key("user_id").eq(user_id),
+            "Limit": limit,
+            "ProjectionExpression": "job_id, job_status, created_at",  # Only essential fields
+        }
+        if exclusive_start_key:
+            query_args["ExclusiveStartKey"] = exclusive_start_key
+
+        response = job_table.query(**query_args)
 
         return Response(
             status_code=200,
             headers=CORS_HEADERS,
-            body=json.dumps([item for item in response["Items"]]),
+            body=json.dumps(
+                {
+                    "jobs": response["Items"],
+                    "lastEvaluatedKey": response.get("LastEvaluatedKey"),
+                }
+            ),
         )
     except ClientError as e:
         logger.exception("Failed to list jobs")
@@ -357,18 +381,16 @@ def get_download_url(job_id: str, file_id: str):
         raise UnauthorizedError("User ID not found in claims")
 
     try:
-        # Retrieve the job record from DynamoDB
-        job_response = job_table.get_item(Key={"user_id": user_id, "job_id": job_id})
+        # Retrieve minimal job data
+        job_response = job_table.get_item(
+            Key={"user_id": user_id, "job_id": job_id},
+            ProjectionExpression="file_ids",
+        )
         if "Item" not in job_response:
             raise NotFoundError(f"Job {job_id} not found")
 
-        # Check if the file is part of the job
-        file_found = False
-        for file in job_response["Item"]["input_files"]:
-            if file["file_id"] == file_id:
-                file_found = True
-                break
-        if not file_found:
+        # Use set for faster lookup
+        if file_id not in job_response["Item"].get("file_ids", []):
             raise NotFoundError(f"File {file_id} not found in job {job_id}")
 
         # Generate a presigned URL for the file

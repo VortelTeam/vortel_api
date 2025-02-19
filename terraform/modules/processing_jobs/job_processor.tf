@@ -8,7 +8,7 @@ module "lambda_router" {
   function_name = "${var.project_name}-${var.environment}-${local.lambda_name}"
   description   = "Lambda function for handling inference jobs"
   handler       = "index.lambda_handler"
-  runtime       = "python3.11"
+  runtime       = "python3.12"
   timeout       = 900
   publish       = true
   source_path   = "${path.root}/../../lambdas/data_extraction"
