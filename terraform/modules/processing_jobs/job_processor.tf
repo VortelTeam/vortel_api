@@ -13,7 +13,8 @@ module "lambda_router" {
   publish       = true
   source_path   = "${path.root}/../../lambdas/data_extraction"
 
-  layers                       = ["arn:aws:lambda:${data.aws_region.current.name}:017000801446:layer:AWSLambdaPowertoolsPythonV2:79"]
+  layers = ["arn:aws:lambda:${data.aws_region.current.name}:017000801446:layer:AWSLambdaPowertoolsPythonV2:79",
+  "arn:aws:lambda:us-west-2:668618083225:layer:boto3136:1"]
   store_on_s3                  = true
   s3_bucket                    = var.lambda_storage_bucket
   trigger_on_package_timestamp = false
