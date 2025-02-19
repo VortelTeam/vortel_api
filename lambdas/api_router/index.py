@@ -275,13 +275,13 @@ def create_data_extraction_job():
         raise BadRequestError(f"Exceeded maximum of {MAX_FILES_PER_JOB} files per job")
 
     # Retrieve and validate files
-    files = []
+    valid_files = []
     for file_id in file_list[:MAX_FILES_PER_JOB]:  # Enforce max files
         s3_key = f"{user_id}/{file_id}"
         try:
             head_response = s3_client.head_object(Bucket=INPUT_BUCKET_NAME, Key=s3_key)
             metadata = _truncate_metadata(head_response.get("Metadata", {}))
-            files.append(
+            valid_files.append(
                 {
                     "file_id": file_id,
                     "filename": metadata.get("filename"),
@@ -291,34 +291,58 @@ def create_data_extraction_job():
             if e.response["Error"]["Code"] != "404":
                 logger.error(f"Error retrieving file {file_id}: {str(e)}")
 
-    if not files:
+    if not valid_files:
         raise NotFoundError("No valid files found")
 
-    # Create job record with minimal data
+    # Create job record
     job_id = str(uuid.uuid4())
     current_time = int(time.time())
     dynamo_item = {
         "user_id": user_id,
         "job_id": job_id,
         "job_status": "PENDING",
-        "file_ids": [
-            f["file_id"] for f in files
-        ],  # Store only file IDs for quick lookup
+        "file_ids": [f["file_id"] for f in valid_files],
         "created_at": current_time,
         "updated_at": current_time,
         "job_error": "",
     }
 
-    # Check item size
-    item_size = len(json.dumps(dynamo_item).encode("utf-8"))
-    if item_size > 400 * 1024:  # DynamoDB 400KB limit
-        raise BadRequestError("Job request too large")
-
     try:
+        # First write to DynamoDB to ensure we have a record before queueing
         job_table.put_item(Item=dynamo_item)
     except ClientError as e:
         logger.error(f"DynamoDB error while creating job: {e}")
         raise ServiceError(msg="Failed to create job record")
+
+    try:
+        # Send minimal data to SQS to reduce message size
+        sqs_client.send_message(
+            QueueUrl=os.environ["JOBS_QUEUE_URL"],
+            MessageBody=json.dumps(
+                {
+                    "user_id": user_id,
+                    "job_id": job_id,
+                    "action": "process_job",  # Added for clearer message purpose
+                    "file_ids": [f["file_id"] for f in valid_files],
+                }
+            ),
+            MessageAttributes={
+                "JobType": {"StringValue": "data_extraction", "DataType": "String"}
+            },
+        )
+    except ClientError as e:
+        error_code = e.response["Error"]["Code"]
+        logger.error(f"SQS send error: {error_code}")
+
+        # Attempt to clean up failed job record
+        try:
+            job_table.delete_item(Key={"user_id": user_id, "job_id": job_id})
+        except ClientError as delete_error:
+            logger.error(f"Failed to clean up job {job_id}: {delete_error}")
+
+        if error_code == "QueueDoesNotExist":
+            raise NotFoundError("Job queue not available")
+        raise ServiceError(msg="Failed to queue job")
 
     return Response(
         status_code=201,
@@ -328,7 +352,7 @@ def create_data_extraction_job():
                 "job_id": job_id,
                 "status": "PENDING",
                 "created_at": current_time,
-                "input_files": files,
+                "file_count": len(valid_files),
             }
         ),
     )
