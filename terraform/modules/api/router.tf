@@ -17,11 +17,12 @@ module "lambda_router" {
   s3_bucket                    = var.lambda_storage_bucket
   trigger_on_package_timestamp = false
   environment_variables = {
-    INPUT_BUCKET_NAME       = var.user_files_bucket.name
-    OUTPUT_BUCKET_NAME      = var.output_bucket.name
-    POWERTOOLS_SERVICE_NAME = "${var.project_name}-${var.environment}-${local.lambda_name}"
-    JOBS_QUEUE_URL          = var.jobs_queue.name
-    JOBS_TABLE              = var.jobs_status_table.name
+    INPUT_BUCKET_NAME            = var.user_files_bucket.name
+    OUTPUT_BUCKET_NAME           = var.output_bucket.name
+    POWERTOOLS_SERVICE_NAME      = "${var.project_name}-${var.environment}-${local.lambda_name}"
+    POWERTOOLS_METRICS_NAMESPACE = "APIGateway"
+    JOBS_QUEUE_URL               = var.jobs_queue.name
+    JOBS_TABLE                   = var.jobs_status_table.name
   }
 
   role_name                = "${var.project_name}-${var.environment}-${local.lambda_name}-role"
