@@ -193,7 +193,7 @@ def retrieve_files(user_id: str, file_list: List[str]) -> List[Dict[str, Any]]:
 
 @app.post("/jobs")
 @tracer.capture_method
-def create_batch_inference_job():
+def create_data_extraction_job():
     user_id = app.current_event.request_context.authorizer.claims.get("sub")
     if not user_id:
         raise UnauthorizedError("User ID not found in claims")
@@ -222,11 +222,6 @@ def create_batch_inference_job():
     if not files:
         raise NotFoundError("None of the specified files were found")
 
-    # Validate prompt
-    prompt = body.get("prompt")
-    if not prompt:
-        raise BadRequestError("Prompt is required")
-
     # Send SQS message
     try:
         message_body = {
@@ -234,7 +229,6 @@ def create_batch_inference_job():
             "job_id": job_id,
             "job_status": "PENDING",
             "input_files": files,
-            "prompt": prompt,
         }
 
         sqs_client.send_message(
@@ -258,7 +252,6 @@ def create_batch_inference_job():
                 "user_id": user_id,
                 "job_id": job_id,
                 "job_status": "PENDING",
-                "prompt": prompt,
                 "input_files": files,
                 "created_at": current_time,
                 "updated_at": current_time,

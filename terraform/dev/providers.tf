@@ -1,8 +1,8 @@
 ﻿terraform {
   backend "s3" {
-    bucket = "vortel-backend-storage-2"
+    bucket = "vortel-backend-storage"
     key    = "terraform/terraform.tfstate"
-    region = "ca-central-1"
+    region = "us-west-2"
   }
   required_providers {
     aws = {
@@ -17,7 +17,7 @@ locals {
 }
 
 provider "aws" {
-  region = "ca-central-1"
+  region = "us-west-2"
   default_tags {
     tags = {
       Environment = var.environment
