@@ -6,16 +6,12 @@
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
-
-  force_destroy = true
 }
 
 module "user_files_storage" {
   source = "terraform-aws-modules/s3-bucket/aws"
 
   bucket = "${var.project_name}-${var.environment}-user-files"
-
-  force_destroy = true
 
   versioning = {
     enabled = true
