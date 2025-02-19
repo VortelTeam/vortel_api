@@ -1,7 +1,7 @@
 ﻿module "file_process_output" {
   source = "terraform-aws-modules/s3-bucket/aws"
 
-  bucket                  = "${var.project_name}-${var.environment}-file-process-output"
+  bucket                  = "${var.project_name}-${var.environment}-file-process-output-2"
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -11,7 +11,7 @@
 module "user_files_storage" {
   source = "terraform-aws-modules/s3-bucket/aws"
 
-  bucket = "${var.project_name}-${var.environment}-user-files"
+  bucket = "${var.project_name}-${var.environment}-user-files-2"
 
   versioning = {
     enabled = true
