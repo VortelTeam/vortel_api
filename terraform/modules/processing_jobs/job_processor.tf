@@ -19,7 +19,7 @@ module "lambda_router" {
   s3_bucket                    = var.lambda_storage_bucket
   trigger_on_package_timestamp = false
   environment_variables = {
-    INPUT_BUCKET                 = var.user_files_bucket.name
+    USER_FILES_BUCKET            = var.user_files_bucket.name
     OUTPUT_BUCKET                = var.output_bucket.name
     POWERTOOLS_SERVICE_NAME      = "${var.project_name}-${var.environment}-${local.lambda_name}"
     POWERTOOLS_METRICS_NAMESPACE = "DataExtraction"
