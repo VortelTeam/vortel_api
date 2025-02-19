@@ -5,13 +5,6 @@
   }
 }
 
-output "file_metadata_table" {
-  value = {
-    name = aws_dynamodb_table.file_metadata.name
-    arn  = aws_dynamodb_table.file_metadata.arn
-  }
-}
-
 output "user_files_bucket" {
   value = {
     name = module.user_files_storage.s3_bucket_id

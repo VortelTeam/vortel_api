@@ -26,7 +26,6 @@ app = APIGatewayRestResolver()
 
 s3_client = boto3.client("s3")
 dynamodb = boto3.resource("dynamodb")
-metadata_table = dynamodb.Table(os.environ["METADATA_TABLE"])
 job_table = dynamodb.Table(os.environ["JOBS_TABLE"])
 sqs_client = boto3.client("sqs")
 INPUT_BUCKET_NAME = os.environ["INPUT_BUCKET_NAME"]
@@ -49,98 +48,137 @@ def list_files():
         raise UnauthorizedError("User ID not found in claims")
 
     try:
-        response = metadata_table.query(
-            KeyConditionExpression="user_id = :uid",
-            ExpressionAttributeValues={":uid": user_id},
+        # List all objects for the user
+        response = s3_client.list_objects_v2(
+            Bucket=INPUT_BUCKET_NAME, Prefix=f"{user_id}/"
         )
+
+        files = []
+        if "Contents" not in response:
+            return Response(
+                status_code=200,
+                headers=CORS_HEADERS,
+                body=json.dumps([]),
+            )
+
+        for obj in response["Contents"]:
+            key = obj["Key"]
+            # Skip directory-like entries
+            if key == f"{user_id}/":
+                continue
+
+            try:
+                # Get object metadata
+                head_response = s3_client.head_object(Bucket=INPUT_BUCKET_NAME, Key=key)
+                metadata = head_response["Metadata"]
+
+                # Process metadata
+                file_metadata = {}
+                for k, v in metadata.items():
+                    if k.startswith("x-amz-meta-"):
+                        file_metadata[k[11:]] = v
+                    else:
+                        file_metadata[k] = v
+
+                files.append(
+                    {
+                        "file_id": key.split("/")[1],
+                        "filename": file_metadata.get("filename"),
+                        "content_type": head_response.get("ContentType", ""),
+                        "size": obj["Size"],
+                        "last_modified": obj["LastModified"].isoformat(),
+                        "metadata": file_metadata,
+                    }
+                )
+            except ClientError as e:
+                logger.error(f"Failed to retrieve metadata for {key}: {str(e)}")
+
         return Response(
             status_code=200,
             headers=CORS_HEADERS,
-            body=json.dumps(response["Items"]),
+            body=json.dumps(files),
         )
     except ClientError as e:
-        logger.exception("Failed to list files")
+        logger.exception("Failed to list files from S3")
         raise ServiceError(msg="Failed to retrieve files")
 
 
-@app.get("/upload-url")
+@app.post("/upload-url")
 @tracer.capture_method
-def get_upload_url():
-    """Generate a pre-signed URL for S3 file upload"""
+def create_upload_url():
+    """Generate a pre-signed URL for S3 file upload with metadata"""
     user_id = app.current_event.request_context.authorizer.claims.get("sub")
     if not user_id:
         raise UnauthorizedError("User ID not found in claims")
 
-    # Get query parameters
-    query_params = app.current_event.query_string_parameters or {}
-    filename = query_params.get("fileName")
-    content_type = query_params.get("contentType")
+    # Parse request body
+    try:
+        body = app.current_event.json_body
+        filename = body.get("fileName")
+        if "/" in filename:
+            raise BadRequestError("Invalid filename")
+        content_type = body.get("contentType")
+        client_metadata = body.get("metadata", {})
+    except json.JSONDecodeError:
+        raise BadRequestError("Invalid JSON format")
 
     if not filename or not content_type:
-        raise BadRequestError("fileName and contentType are required query parameters")
+        raise BadRequestError("fileName and contentType are required")
 
-    # Generate file_id as the hash of the filename
-    file_id = hashlib.sha256(filename.encode()).hexdigest()[0:8]
-    key = f"{user_id}/{file_id}"
+    # Generate file ID
+    file_id = hashlib.sha256(f"{filename}{time.time()}".encode()).hexdigest()[:8]
+    s3_key = f"{user_id}/{file_id}"
 
     try:
-        # Generate pre-signed URL for S3 upload
-        s3_client = boto3.client("s3")
+        # Create server-generated metadata
+        server_metadata = {
+            "user-id": user_id,
+            "file-id": file_id,
+            "filename": filename,
+            "created-at": str(int(time.time())),
+        }
 
-        # Define conditions for the upload
+        # Combine with client metadata
+        all_metadata = {**server_metadata, **client_metadata}
+
+        # Prepare S3 upload fields and conditions
+        fields = {"content-type": content_type}
         conditions = [
             {"bucket": INPUT_BUCKET_NAME},
             ["content-length-range", 0, MAX_FILE_SIZE],
-            {"key": key},
+            {"key": s3_key},
             {"content-type": content_type},
         ]
 
-        # Generate pre-signed POST URL
+        # Add metadata fields
+        for key, value in all_metadata.items():
+            meta_key = f"x-amz-meta-{key}"
+            fields[meta_key] = value
+            conditions.append({meta_key: value})
+
+        # Generate pre-signed POST
         presigned_post = s3_client.generate_presigned_post(
             Bucket=INPUT_BUCKET_NAME,
-            Key=key,
-            Fields={
-                "content-type": content_type,
-            },
+            Key=s3_key,
+            Fields=fields,
             Conditions=conditions,
-            ExpiresIn=3600,  # URL expires in 1 hour
+            ExpiresIn=3600,
         )
-
-        # Prepare metadata
-        metadata = {
-            "user_id": user_id,
-            "file_id": file_id,
-            "filename": filename,
-            "content_type": content_type,
-            "status": "pending",  # Add status to track upload completion
-            "created_at": int(time.time()),
-        }
-
-        # Store pending metadata in DynamoDB
-        metadata_table.put_item(
-            Item=metadata,
-        )
-
-        # Return pre-signed URL and metadata
-        response_data = {
-            "uploadUrl": presigned_post["url"],
-            "fields": presigned_post["fields"],
-            "fileId": file_id,
-            "metadata": metadata,
-        }
 
         return Response(
             status_code=200,
             headers=CORS_HEADERS,
-            body=json.dumps(response_data),
+            body=json.dumps(
+                {
+                    "uploadUrl": presigned_post["url"],
+                    "fields": presigned_post["fields"],
+                    "fileId": file_id,
+                }
+            ),
         )
-
     except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        logger.error(f"AWS error generating pre-signed URL: {error_code}")
-        if error_code == "NoSuchBucket":
-            raise NotFoundError("Storage bucket not found")
-        raise ServiceError(msg="Failed to generate upload URL")
+        logger.exception("Failed to generate presigned URL")
+        raise ServiceError("Failed to create upload URL")
 
 
 @app.delete("/files/<file_id>")
@@ -150,44 +188,51 @@ def delete_file(file_id: str):
     if not user_id:
         raise UnauthorizedError("User ID not found in claims")
 
+    s3_key = f"{user_id}/{file_id}"
+
     try:
-        # First, retrieve the metadata to get the S3 key
-        response = metadata_table.get_item(Key={"user_id": user_id, "file_id": file_id})
-
-        if "Item" not in response:
+        # Verify file exists
+        s3_client.head_object(Bucket=INPUT_BUCKET_NAME, Key=s3_key)
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "404":
             raise NotFoundError("File not found")
+        raise ServiceError("Error verifying file existence")
 
-        # Delete from S3
-        s3_client.delete_object(Bucket=INPUT_BUCKET_NAME, Key=f"{user_id}/{file_id}")
-
-        # Delete metadata
-        metadata_table.delete_item(Key={"user_id": user_id, "file_id": file_id})
-
+    try:
+        s3_client.delete_object(Bucket=INPUT_BUCKET_NAME, Key=s3_key)
         return Response(status_code=204, headers=CORS_HEADERS)
     except ClientError as e:
-        error_code = e.response["Error"]["Code"]
-        logger.error(f"AWS error during deletion: {error_code}")
-        if error_code == "ResourceNotFoundException":
-            raise NotFoundError("File metadata not found")
-        raise ServiceError(msg="Failed to delete file")
+        logger.exception("Failed to delete file from S3")
+        raise ServiceError("Failed to delete file")
 
 
 def retrieve_files(user_id: str, file_list: List[str]) -> List[Dict[str, Any]]:
-    logger.debug(f"Retrieving files: {file_list}")
     files = []
     for file_id in file_list:
+        s3_key = f"{user_id}/{file_id}"
         try:
-            response = metadata_table.get_item(
-                Key={"user_id": user_id, "file_id": file_id}
+            head_response = s3_client.head_object(Bucket=INPUT_BUCKET_NAME, Key=s3_key)
+            metadata = head_response["Metadata"]
+
+            file_metadata = {}
+            for k, v in metadata.items():
+                if k.startswith("x-amz-meta-"):
+                    file_metadata[k[11:]] = v
+                else:
+                    file_metadata[k] = v
+
+            files.append(
+                {
+                    "file_id": file_id,
+                    "filename": file_metadata.get("filename"),
+                    "content_type": head_response.get("ContentType", ""),
+                    "metadata": file_metadata,
+                }
             )
-            if "Item" in response:
-                files.append(response["Item"])
         except ClientError as e:
-            error_code = e.response["Error"]["Code"]
-            logger.error(f"Error retrieving file {file_id}: {error_code}")
-            if error_code == "ResourceNotFoundException":
+            if e.response["Error"]["Code"] == "404":
                 continue
-            raise ServiceError(msg=f"Failed to retrieve file {file_id}")
+            logger.error(f"Error retrieving file {file_id}: {str(e)}")
     return files
 
 
@@ -363,10 +408,15 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Dict[str, A
         return app.resolve(event, context)
     except (BadRequestError, NotFoundError, UnauthorizedError, ServiceError) as e:
         logger.exception(str(e))
-        return {"statusCode": e.status_code, "body": json.dumps({"message": str(e)})}
+        return {
+            "statusCode": e.status_code,
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"message": str(e)}),
+        }
     except Exception as e:
-        logger.exception("Unknown error occurred")
+        logger.exception("Internal server error")
         return {
             "statusCode": 500,
+            "headers": CORS_HEADERS,
             "body": json.dumps({"message": "Internal server error"}),
         }

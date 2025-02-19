@@ -80,7 +80,7 @@ paths:
               method.response.header.Access-Control-Allow-Origin: "'*'"
               method.response.header.Access-Control-Allow-Credentials: "'true'"
   /upload-url:
-    get:
+    post:
       summary: Get pre-signed URL for file upload
       security:
         - UserPool: []

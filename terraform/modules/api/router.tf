@@ -17,7 +17,6 @@ module "lambda_router" {
   s3_bucket                    = var.lambda_storage_bucket
   trigger_on_package_timestamp = false
   environment_variables = {
-    METADATA_TABLE          = var.metadata_table.name
     INPUT_BUCKET_NAME       = var.user_files_bucket.name
     OUTPUT_BUCKET_NAME      = var.output_bucket.name
     POWERTOOLS_SERVICE_NAME = "${var.project_name}-${var.environment}-${local.lambda_name}"
@@ -52,19 +51,6 @@ module "lambda_router" {
       resources = [
         var.output_bucket.arn,
         "${var.output_bucket.arn}/*"
-      ]
-    }
-    dynamodb_metadata = {
-      effect = "Allow",
-      actions = [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:Query"
-      ],
-      resources = [
-        var.metadata_table.arn,
-        "${var.metadata_table.arn}/index/*"
       ]
     }
     sqs_batch_jobs = {
