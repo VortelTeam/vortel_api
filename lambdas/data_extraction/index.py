@@ -6,7 +6,11 @@ from aws_lambda_powertools import Logger, Tracer, Metrics
 from aws_lambda_powertools.metrics import MetricUnit
 from aws_lambda_powertools.utilities.typing import LambdaContext
 from aws_lambda_powertools.utilities.data_classes import SQSEvent
-from aws_lambda_powertools.utilities.batch import BatchProcessor, EventType
+from aws_lambda_powertools.utilities.batch import (
+    BatchProcessor,
+    EventType,
+    process_partial_response,
+)
 
 logger = Logger()
 tracer = Tracer()
@@ -76,18 +80,12 @@ def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Dict[str, A
         event = SQSEvent(event)
 
         # Process batch
-        batch_response = processor.process_batch(event=event, handler=record_handler)
-
-        # Check for batch processing errors
-        if batch_response.response_type == "BatchItemFailures":
-            logger.error(
-                "Some records failed processing",
-                extra={"failed_records": batch_response.response["batchItemFailures"]},
-            )
-            return batch_response.response
-
-        return {"statusCode": 200, "body": "Successfully processed all records"}
-
+        return process_partial_response(
+            event=event,
+            record_handler=record_handler,
+            processor=processor,
+            context=context,
+        )
     except Exception as e:
         logger.exception("Error in lambda handler")
         raise
