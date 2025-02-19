@@ -81,22 +81,38 @@ paths:
               method.response.header.Access-Control-Allow-Credentials: "'true'"
   /upload-url:
     post:
-      summary: Get pre-signed URL for file upload
+      summary: Get pre-signed URL for file upload with metadata
+      description: |
+        Generates a pre-signed URL for direct S3 upload with embedded metadata.
+        Client-provided metadata will be stored with the file in S3.
       security:
         - UserPool: []
-      parameters:
-        - in: query
-          name: fileName
-          schema:
-            type: string
-          description: Original file name for the upload
-          required: true
-        - in: query
-          name: contentType
-          schema:
-            type: string
-          description: MIME type of the file
-          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fileName:
+                  type: string
+                  description: Original file name for the upload
+                  example: "document.pdf"
+                contentType:
+                  type: string
+                  description: MIME type of the file
+                  example: "application/pdf"
+                metadata:
+                  type: object
+                  description: Optional key-value pairs of custom metadata
+                  additionalProperties:
+                    type: string
+                  example:
+                    category: "financial"
+                    sensitive: "true"
+              required:
+                - fileName
+                - contentType
       x-amazon-apigateway-integration:
         uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
         httpMethod: POST
@@ -112,17 +128,41 @@ paths:
                 properties:
                   uploadUrl:
                     type: string
-                    example: "https://my-bucket.s3.amazonaws.com/..."
+                    example: "https://{bucket}.s3.amazonaws.com/"
                   fileId:
                     type: string
-                    example: "123e4567-e89b-12d3-a456-426614174000"
+                    example: "a1b2c3d4"
                   fields:
                     type: object
-                    description: Additional fields needed for S3 form upload
+                    description: >
+                      Form fields including S3 metadata prefixed with 'x-amz-meta-'.
+                      These MUST be included with the upload request.
+                    properties:
+                      key:
+                        type: string
+                        example: "user123/a1b2c3d4"
+                      Policy:
+                        type: string
+                        example: "eyJleHBpcmF0aW9uIjo..."
+                      x-amz-algorithm:
+                        type: string
+                        example: "AWS4-HMAC-SHA256"
+                      x-amz-credential:
+                        type: string
+                        example: "ASIAXXX/20230801/us-east-1/s3/aws4_request"
+                      x-amz-date:
+                        type: string
+                        example: "20230801T000000Z"
+                      x-amz-meta-filename:
+                        type: string
+                        example: "document.pdf"
+                      x-amz-meta-category:
+                        type: string
+                        example: "financial"
         "400":
-          description: Bad request
+          description: Bad request (missing required fields or invalid JSON)
         "403":
-          description: Unauthorized
+          description: Unauthorized request
         "500":
           description: Internal server error
 
