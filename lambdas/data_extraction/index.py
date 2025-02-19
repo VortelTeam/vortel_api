@@ -1,6 +1,6 @@
 ﻿import os
 from typing import Dict, Any
-
+import json
 import boto3
 from aws_lambda_powertools import Logger, Tracer, Metrics
 from aws_lambda_powertools.metrics import MetricUnit
@@ -30,10 +30,9 @@ def record_handler(record: Dict[str, Any]) -> Dict[str, Any]:
     """
     try:
         # Extract information from the record
-        message_body = record["body"]
+        message_body = json.loads(record["body"])
         user_id = message_body["user_id"]
-        input_file = message_body["input_files"][0]
-        file_id = input_file["file_id"]
+        file_id = message_body["file_ids"][0]
 
         # Construct S3 URI
         input_s3_uri = f"s3://{USER_FILES_BUCKET}/{user_id}/{file_id}"
