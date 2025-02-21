@@ -397,7 +397,8 @@ def list_jobs():
         raise ServiceError(msg="Failed to retrieve jobs")
 
 
-@app.get("/jobs/<job_id>/download/<file_id>")
+
+@app.get("/jobs/<job_id>/download")
 @tracer.capture_method
 def get_download_url(job_id: str, file_id: str):
     user_id = app.current_event.request_context.authorizer.claims.get("sub")
@@ -419,7 +420,7 @@ def get_download_url(job_id: str, file_id: str):
 
         # Generate a presigned URL for the file
         # TODO: make sure to sync with the inference output key
-        s3_key = f"{user_id}/{job_id}/{file_id}_result.txt"
+        s3_key = f"/{user_id}/{job_id}/{file_id}_result.txt"
         presigned_url = s3_client.generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": s3_key},
