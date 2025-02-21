@@ -375,7 +375,7 @@ def list_jobs():
         query_args = {
             "KeyConditionExpression": Key("user_id").eq(user_id),
             "Limit": limit,
-            "ProjectionExpression": "job_id, job_status, created_at",  # Only essential fields
+            "ProjectionExpression": "job_id, job_status, created_at, arns",  # Only essential fields
         }
         if exclusive_start_key:
             query_args["ExclusiveStartKey"] = exclusive_start_key
