@@ -1,6 +1,5 @@
 ﻿resource "aws_cognito_user_pool" "this" {
   name = "${var.project_name}-${var.environment}-user-pool"
-
   # Email configuration
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
@@ -43,9 +42,9 @@
     }
   }
 
-  # Allow users to sign themselves up
+  # Disable users to sign themselves up
   admin_create_user_config {
-    allow_admin_create_user_only = false
+    allow_admin_create_user_only = true
   }
 }
 
