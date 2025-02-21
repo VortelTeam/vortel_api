@@ -375,7 +375,7 @@ def list_jobs():
         query_args = {
             "KeyConditionExpression": Key("user_id").eq(user_id),
             "Limit": limit,
-            "ProjectionExpression": "job_id, job_status, created_at, arns",  # Only essential fields
+            "ProjectionExpression": "job_id, job_status, created_at, automation_job_arns",  # Only essential fields
         }
         if exclusive_start_key:
             query_args["ExclusiveStartKey"] = exclusive_start_key
@@ -395,7 +395,6 @@ def list_jobs():
     except ClientError as e:
         logger.exception("Failed to list jobs")
         raise ServiceError(msg="Failed to retrieve jobs")
-
 
 
 @app.get("/jobs/<job_id>/download")
