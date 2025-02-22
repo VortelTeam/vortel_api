@@ -22,28 +22,35 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Create docs directory
+        run: mkdir -p public
+
       - name: Install Redoc
         run: npm install -g redoc-cli
 
       - name: Generate HTML documentation
         run: |
-          mkdir -p docs
+          # Generate standalone HTML with embedded styles
           redoc-cli bundle terraform/modules/api/api.yml \
-            --output docs/index.html \
-            --title "API Documentation"
+            --output public/index.html \
+            --title "API Documentation" \
+            --template ./public/template.html \
+            --options.theme.typography.optimizeSpeed=true \
+            --options.hideDownloadButton=false
 
       - name: Copy OpenAPI spec
-        run: cp terraform/modules/api/api.yml docs/api.yml
+        run: cp terraform/modules/api/api.yml public/openapi.yml
 
-      - name: Disable Jekyll
-        run: touch docs/.nojekyll
+      - name: Create .nojekyll
+        run: touch public/.nojekyll
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
+          publish_dir: ./public
           force_orphan: true
+          enable_jekyll: false
           commit_message: "docs: update API documentation"
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
