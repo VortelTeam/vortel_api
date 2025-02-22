@@ -1,0 +1,81 @@
+﻿name: Generate API Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'terraform/modules/api/api.yml'  # Only trigger when API spec changes
+      
+  # Optional: Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed for pushing to gh-pages branch
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Redoc
+        run: npm install -g redoc-cli
+
+      - name: Generate HTML documentation
+        run: |
+          mkdir -p docs
+          # Generate main documentation
+          redoc-cli bundle terraform/modules/api/api.yml \
+            --output docs/index.html \
+            --title "API Documentation" \
+            --disableGoogleFont \
+            --options.theme.colors.primary.main=#32329f
+
+      - name: Add custom styling
+        run: |
+          # Create a simple CSS file for better mobile responsiveness
+          cat > docs/custom.css << EOF
+          body {
+            margin: 0;
+            padding: 0;
+          }
+          .menu-content {
+            top: 66px !important;
+          }
+          @media (max-width: 768px) {
+            .menu-content {
+              top: 0 !important;
+            }
+          }
+          EOF
+
+      - name: Create documentation index
+        run: |
+          # Create a simple landing page
+          cat > docs/README.md << EOF
+          # API Documentation
+          
+          This documentation is automatically generated from our OpenAPI specification.
+          
+          - [Interactive API Documentation](./index.html)
+          - [Download OpenAPI Specification](./api.yml)
+          EOF
+
+      - name: Copy OpenAPI spec
+        run: cp terraform/modules/api/api.yml docs/api.yml
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          force_orphan: true  # Keep gh-pages branch clean
+          commit_message: "docs: update API documentation"
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
