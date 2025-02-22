@@ -25,18 +25,14 @@ jobs:
       - name: Create docs directory
         run: mkdir -p public
 
-      - name: Install Redoc
-        run: npm install -g redoc-cli
+      - name: Install Redocly
+        run: npm install -g @redocly/cli
 
       - name: Generate HTML documentation
         run: |
-          # Generate standalone HTML with embedded styles
-          redoc-cli bundle terraform/modules/api/api.yml \
+          npx @redocly/cli build-docs terraform/modules/api/api.yml \
             --output public/index.html \
-            --title "API Documentation" \
-            --template ./public/template.html \
-            --options.theme.typography.optimizeSpeed=true \
-            --options.hideDownloadButton=false
+            --title "API Documentation"
 
       - name: Copy OpenAPI spec
         run: cp terraform/modules/api/api.yml public/openapi.yml
