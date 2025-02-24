@@ -19,7 +19,7 @@ from aws_lambda_powertools.event_handler.exceptions import (
 )
 import hashlib
 
-from lambdas.api_router.json_to_csv import convert_json_to_csv
+from json_to_csv import convert_json_to_csv
 
 logger = Logger()
 tracer = Tracer()
