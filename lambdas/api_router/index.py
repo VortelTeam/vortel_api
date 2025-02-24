@@ -424,29 +424,42 @@ def get_download_url(job_id: str, format: str = None):
         s3_key = f"/{extraction_id}/0/custom_output/0/result.json"
 
         if format and format.lower() == "csv":
-            # For CSV format, we need to get the JSON first and convert it
-            response = s3_client.get_object(Bucket=OUTPUT_BUCKET_NAME, Key=s3_key)
-            json_content = json.loads(response["Body"].read().decode("utf-8"))
-
-            # Convert JSON to CSV
-            csv_content = convert_json_to_csv(json_content)
-
-            # Upload the CSV to S3 with a temporary name
-            csv_s3_key = f"/{extraction_id}/0/custom_output/0/temp_result_{job_id}.csv"
-            s3_client.put_object(
-                Bucket=OUTPUT_BUCKET_NAME,
-                Key=csv_s3_key,
-                Body=csv_content,
-                ContentType="text/csv",
-            )
-
-            # Generate presigned URL for the CSV
-            presigned_url = s3_client.generate_presigned_url(
-                ClientMethod="get_object",
-                Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": csv_s3_key},
-                ExpiresIn=600,
-            )
-            result_type = "csv"
+            # Check if CSV already exists
+            csv_s3_key = f"/{extraction_id}/0/custom_output/0/result.csv"
+            try:
+                # Try to generate URL for existing CSV
+                presigned_url = s3_client.generate_presigned_url(
+                    ClientMethod="get_object",
+                    Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": csv_s3_key},
+                    ExpiresIn=600,
+                )
+                result_type = "csv"
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'NoSuchKey':
+                    # CSV doesn't exist, generate it from JSON
+                    response = s3_client.get_object(Bucket=OUTPUT_BUCKET_NAME, Key=s3_key)
+                    json_content = json.loads(response["Body"].read().decode("utf-8"))
+                    
+                    # Convert JSON to CSV
+                    csv_content = convert_json_to_csv(json_content)
+                    
+                    # Upload the CSV
+                    s3_client.put_object(
+                    Bucket=OUTPUT_BUCKET_NAME,
+                    Key=csv_s3_key,
+                    Body=csv_content,
+                    ContentType="text/csv",
+                    )
+                    
+                    # Generate presigned URL for the new CSV
+                    presigned_url = s3_client.generate_presigned_url(
+                    ClientMethod="get_object",
+                    Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": csv_s3_key},
+                    ExpiresIn=600,
+                    )
+                    result_type = "csv"
+                else:
+                    raise
         else:
             # Default to JSON format
             presigned_url = s3_client.generate_presigned_url(
