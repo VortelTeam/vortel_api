@@ -19,6 +19,8 @@ from aws_lambda_powertools.event_handler.exceptions import (
 )
 import hashlib
 
+from lambdas.api_router.json_to_csv import convert_json_to_csv
+
 logger = Logger()
 tracer = Tracer()
 metrics = Metrics()
@@ -399,7 +401,7 @@ def list_jobs():
 
 @app.get("/jobs/<job_id>/download")
 @tracer.capture_method
-def get_download_url(job_id: str):
+def get_download_url(job_id: str, format: str = None):
     user_id = app.current_event.request_context.authorizer.claims.get("sub")
     if not user_id:
         raise UnauthorizedError("User ID not found in claims")
@@ -418,18 +420,46 @@ def get_download_url(job_id: str):
         first_ar = automation_job_arns[0]
         extraction_id = first_ar.split("/")[-1]
 
-        # Generate a presigned URL for the file
+        # Default S3 key for JSON file
         s3_key = f"/{extraction_id}/0/custom_output/0/result.json"
-        presigned_url = s3_client.generate_presigned_url(
-            ClientMethod="get_object",
-            Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": s3_key},
-            ExpiresIn=600,
-        )
+
+        if format and format.lower() == "csv":
+            # For CSV format, we need to get the JSON first and convert it
+            response = s3_client.get_object(Bucket=OUTPUT_BUCKET_NAME, Key=s3_key)
+            json_content = json.loads(response["Body"].read().decode("utf-8"))
+
+            # Convert JSON to CSV
+            csv_content = convert_json_to_csv(json_content)
+
+            # Upload the CSV to S3 with a temporary name
+            csv_s3_key = f"/{extraction_id}/0/custom_output/0/temp_result_{job_id}.csv"
+            s3_client.put_object(
+                Bucket=OUTPUT_BUCKET_NAME,
+                Key=csv_s3_key,
+                Body=csv_content,
+                ContentType="text/csv",
+            )
+
+            # Generate presigned URL for the CSV
+            presigned_url = s3_client.generate_presigned_url(
+                ClientMethod="get_object",
+                Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": csv_s3_key},
+                ExpiresIn=600,
+            )
+            result_type = "csv"
+        else:
+            # Default to JSON format
+            presigned_url = s3_client.generate_presigned_url(
+                ClientMethod="get_object",
+                Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": s3_key},
+                ExpiresIn=600,
+            )
+            result_type = "json"
 
         return Response(
             status_code=200,
             headers=CORS_HEADERS,
-            body=json.dumps({"presigned_url": presigned_url}),
+            body=json.dumps({"presigned_url": presigned_url, "format": result_type}),
         )
     except ClientError as e:
         error_code = e.response["Error"]["Code"]
