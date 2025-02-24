@@ -399,27 +399,28 @@ def list_jobs():
 
 @app.get("/jobs/<job_id>/download")
 @tracer.capture_method
-def get_download_url(job_id: str, file_id: str):
+def get_download_url(job_id: str):
     user_id = app.current_event.request_context.authorizer.claims.get("sub")
     if not user_id:
         raise UnauthorizedError("User ID not found in claims")
 
     try:
         # Retrieve minimal job data
-        job_response = job_table.get_item(
+        job_response_arns = job_table.get_item(
             Key={"user_id": user_id, "job_id": job_id},
-            ProjectionExpression="file_ids",
+            ProjectionExpression="automation_job_arns",
         )
-        if "Item" not in job_response:
+        if "Item" not in job_response_arns:
             raise NotFoundError(f"Job {job_id} not found")
 
-        # Use set for faster lookup
-        if file_id not in job_response["Item"].get("file_ids", []):
-            raise NotFoundError(f"File {file_id} not found in job {job_id}")
-
+        # Extract extraction id from automation job ARN
+        automation_job_arns = job_response_arns["Item"].get("automation_job_arns", [])
+        first_ar = automation_job_arns[0]
+        extraction_id = first_ar.split("/")[-1]
+        
         # Generate a presigned URL for the file
         # TODO: make sure to sync with the inference output key
-        s3_key = f"/{user_id}/{job_id}/{file_id}_result.txt"
+        s3_key = f"/{extraction_id}/{job_id}/{file_id}_result.txt"
         presigned_url = s3_client.generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": s3_key},
