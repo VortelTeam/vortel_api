@@ -401,7 +401,7 @@ def list_jobs():
 
 @app.get("/jobs/<job_id>/download")
 @tracer.capture_method
-def get_download_url(job_id: str, format: str = None):
+def get_download_url(job_id: str):
     user_id = app.current_event.request_context.authorizer.claims.get("sub")
     if not user_id:
         raise UnauthorizedError("User ID not found in claims")
@@ -419,6 +419,7 @@ def get_download_url(job_id: str, format: str = None):
         automation_job_arns = job_response_arns["Item"].get("automation_job_arns", [])
         first_ar = automation_job_arns[0]
         extraction_id = first_ar.split("/")[-1]
+        format = app.current_event.get_query_string_value("format", None)
 
         # Default S3 key for JSON file
         s3_key = f"/{extraction_id}/0/custom_output/0/result.json"
@@ -435,27 +436,29 @@ def get_download_url(job_id: str, format: str = None):
                 )
                 result_type = "csv"
             except ClientError as e:
-                if e.response['Error']['Code'] == 'NoSuchKey':
+                if e.response["Error"]["Code"] == "NoSuchKey":
                     # CSV doesn't exist, generate it from JSON
-                    response = s3_client.get_object(Bucket=OUTPUT_BUCKET_NAME, Key=s3_key)
+                    response = s3_client.get_object(
+                        Bucket=OUTPUT_BUCKET_NAME, Key=s3_key
+                    )
                     json_content = json.loads(response["Body"].read().decode("utf-8"))
-                    
+
                     # Convert JSON to CSV
                     csv_content = convert_json_to_csv(json_content)
-                    
+
                     # Upload the CSV
                     s3_client.put_object(
-                    Bucket=OUTPUT_BUCKET_NAME,
-                    Key=csv_s3_key,
-                    Body=csv_content,
-                    ContentType="text/csv",
+                        Bucket=OUTPUT_BUCKET_NAME,
+                        Key=csv_s3_key,
+                        Body=csv_content,
+                        ContentType="text/csv",
                     )
-                    
+
                     # Generate presigned URL for the new CSV
                     presigned_url = s3_client.generate_presigned_url(
-                    ClientMethod="get_object",
-                    Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": csv_s3_key},
-                    ExpiresIn=600,
+                        ClientMethod="get_object",
+                        Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": csv_s3_key},
+                        ExpiresIn=600,
                     )
                     result_type = "csv"
                 else:
