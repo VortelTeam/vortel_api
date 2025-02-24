@@ -417,10 +417,9 @@ def get_download_url(job_id: str):
         automation_job_arns = job_response_arns["Item"].get("automation_job_arns", [])
         first_ar = automation_job_arns[0]
         extraction_id = first_ar.split("/")[-1]
-        
+
         # Generate a presigned URL for the file
-        # TODO: make sure to sync with the inference output key
-        s3_key = f"/{extraction_id}/{job_id}/{file_id}_result.txt"
+        s3_key = f"/{extraction_id}/0/custom_output/0/result.json"
         presigned_url = s3_client.generate_presigned_url(
             ClientMethod="get_object",
             Params={"Bucket": OUTPUT_BUCKET_NAME, "Key": s3_key},
@@ -436,12 +435,10 @@ def get_download_url(job_id: str):
         error_code = e.response["Error"]["Code"]
         logger.error(f"AWS error during download URL generation: {error_code}")
         if error_code == "NoSuchKey":
-            raise NotFoundError(f"File {file_id} not found")
+            raise NotFoundError(f"Extraction result for {job_id} not found")
         raise ServiceError(msg="Failed to generate download URL")
     except Exception as e:
-        logger.exception(
-            f"Error generating download URL for file {file_id} in job {job_id}"
-        )
+        logger.exception(f"Error generating result download URL for job {job_id}")
         raise ServiceError(msg="Failed to generate download URL")
 
 
