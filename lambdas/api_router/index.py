@@ -30,6 +30,8 @@ s3_client = boto3.client("s3")
 dynamodb = boto3.resource("dynamodb")
 job_table = dynamodb.Table(os.environ["JOBS_TABLE"])
 sqs_client = boto3.client("sqs")
+bedrock_data_automation = boto3.client("dataautomationbedrock")
+
 INPUT_BUCKET_NAME = os.environ["INPUT_BUCKET_NAME"]
 OUTPUT_BUCKET_NAME = os.environ["OUTPUT_BUCKET_NAME"]
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
@@ -38,8 +40,8 @@ MAX_FILES_PER_LIST = 100  # Max files per list operation
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "OPTIONS,POST,GET,DELETE",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "OPTIONS,POST,GET,DELETE,PUT",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Security-Token",
     "Access-Control-Allow-Credentials": "true",
 }
 
@@ -496,6 +498,286 @@ def get_download_url(job_id: str):
         raise ServiceError(msg="Failed to generate download URL")
 
 
+@app.get("/blueprints")
+@tracer.capture_method
+def list_blueprints():
+    """
+    List all available blueprints for the current user.
+    Maps to the DataAutomationforBedrock.Client.list_blueprints method.
+    """
+    user_id = app.current_event.request_context.authorizer.claims.get("sub")
+    if not user_id:
+        raise UnauthorizedError("User ID not found in claims")
+
+    try:
+        # Extract query parameters
+        max_results = app.current_event.get_query_string_value("maxResults")
+        next_token = app.current_event.get_query_string_value("nextToken")
+
+        # Build request parameters
+        request_params = {}
+        if max_results:
+            request_params["maxResults"] = int(max_results)
+        if next_token:
+            request_params["nextToken"] = next_token
+
+        # Call Bedrock Data Automation API
+        response = bedrock_data_automation.list_blueprints(**request_params)
+
+        # Transform response to match our API format
+        result = {
+            "blueprints": response.get("blueprints", []),
+            "nextToken": response.get("nextToken"),
+        }
+
+        return Response(status_code=200, headers=CORS_HEADERS, body=json.dumps(result))
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        error_msg = e.response.get("Error", {}).get("Message", str(e))
+
+        logger.error(f"Error listing blueprints: {error_code} - {error_msg}")
+
+        if error_code == "ValidationException":
+            raise BadRequestError(f"Invalid parameters: {error_msg}")
+        elif error_code == "ResourceNotFoundException":
+            raise NotFoundError(error_msg)
+        elif error_code == "AccessDeniedException":
+            raise UnauthorizedError(error_msg)
+        else:
+            raise ServiceError(f"Failed to list blueprints: {error_msg}")
+    except Exception as e:
+        logger.exception("Error listing blueprints")
+        raise ServiceError(f"Failed to list blueprints: {str(e)}")
+
+
+@app.post("/blueprints")
+@tracer.capture_method
+def create_blueprint():
+    """
+    Create a new blueprint in Amazon Bedrock Data Automation.
+    Maps to the DataAutomationforBedrock.Client.create_blueprint method.
+    """
+    user_id = app.current_event.request_context.authorizer.claims.get("sub")
+    if not user_id:
+        raise UnauthorizedError("User ID not found in claims")
+
+    try:
+        # Parse request body
+        body = app.current_event.json_body
+
+        # Extract required fields
+        blueprint_name = body.get("blueprintName")
+        blueprint_type = body.get("type")
+        schema = body.get("schema")
+
+        # Validate required fields
+        if not blueprint_name:
+            raise BadRequestError("blueprintName is required")
+        if not blueprint_type:
+            raise BadRequestError("type is required")
+        if not schema:
+            raise BadRequestError("schema is required")
+
+        # Extract optional fields
+        blueprint_stage = body.get("blueprintStage")
+        tags = body.get("tags", [])
+
+        # Build request parameters
+        request_params = {
+            "blueprintName": blueprint_name,
+            "type": blueprint_type,
+            "schema": schema,
+        }
+
+        if blueprint_stage:
+            request_params["blueprintStage"] = blueprint_stage
+
+        if tags:
+            request_params["tags"] = tags
+
+        # Call Bedrock Data Automation API
+        response = bedrock_data_automation.create_blueprint(**request_params)
+
+        return Response(
+            status_code=201, headers=CORS_HEADERS, body=json.dumps(response)
+        )
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        error_msg = e.response.get("Error", {}).get("Message", str(e))
+
+        logger.error(f"Error creating blueprint: {error_code} - {error_msg}")
+
+        if error_code == "ValidationException":
+            raise BadRequestError(f"Invalid parameters: {error_msg}")
+        elif error_code == "ServiceQuotaExceededException":
+            raise BadRequestError(f"Service quota exceeded: {error_msg}")
+        elif error_code == "AccessDeniedException":
+            raise UnauthorizedError(error_msg)
+        else:
+            raise ServiceError(f"Failed to create blueprint: {error_msg}")
+    except json.JSONDecodeError:
+        raise BadRequestError("Invalid JSON in request body")
+    except Exception as e:
+        logger.exception("Error creating blueprint")
+        raise ServiceError(f"Failed to create blueprint: {str(e)}")
+
+
+@app.get("/blueprints/<blueprint_arn>")
+@tracer.capture_method
+def get_blueprint(blueprint_arn: str):
+    """
+    Get details for a specific blueprint.
+    This API doesn't have a direct counterpart in the SDK but we can build it
+    using the list_blueprints API with a filter.
+    """
+    user_id = app.current_event.request_context.authorizer.claims.get("sub")
+    if not user_id:
+        raise UnauthorizedError("User ID not found in claims")
+
+    try:
+        # Call list_blueprints with the specific ARN
+        response = bedrock_data_automation.list_blueprints(blueprintArn=blueprint_arn)
+
+        # Check if blueprint was found
+        if not response.get("blueprints"):
+            raise NotFoundError(f"Blueprint with ARN {blueprint_arn} not found")
+
+        # Return the first (and should be only) blueprint in the list
+        return Response(
+            status_code=200,
+            headers=CORS_HEADERS,
+            body=json.dumps({"blueprint": response["blueprints"][0]}),
+        )
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        error_msg = e.response.get("Error", {}).get("Message", str(e))
+
+        logger.error(f"Error retrieving blueprint: {error_code} - {error_msg}")
+
+        if error_code == "ValidationException":
+            raise BadRequestError(f"Invalid parameters: {error_msg}")
+        elif error_code == "ResourceNotFoundException":
+            raise NotFoundError(f"Blueprint not found: {error_msg}")
+        elif error_code == "AccessDeniedException":
+            raise UnauthorizedError(error_msg)
+        else:
+            raise ServiceError(f"Failed to retrieve blueprint: {error_msg}")
+    except Exception as e:
+        logger.exception("Error retrieving blueprint")
+        raise ServiceError(f"Failed to retrieve blueprint: {str(e)}")
+
+
+@app.delete("/blueprints/<blueprint_arn>")
+@tracer.capture_method
+def delete_blueprint(blueprint_arn: str):
+    """
+    Delete a specific blueprint.
+    Maps to the DataAutomationforBedrock.Client.delete_blueprint method.
+    """
+    user_id = app.current_event.request_context.authorizer.claims.get("sub")
+    if not user_id:
+        raise UnauthorizedError("User ID not found in claims")
+
+    try:
+        # Get optional blueprint version parameter
+        blueprint_version = app.current_event.get_query_string_value("blueprintVersion")
+
+        # Build request parameters
+        request_params = {"blueprintArn": blueprint_arn}
+
+        if blueprint_version:
+            request_params["blueprintVersion"] = blueprint_version
+
+        # Call Bedrock Data Automation API
+        bedrock_data_automation.delete_blueprint(**request_params)
+
+        return Response(status_code=204, headers=CORS_HEADERS)
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        error_msg = e.response.get("Error", {}).get("Message", str(e))
+
+        logger.error(f"Error deleting blueprint: {error_code} - {error_msg}")
+
+        if error_code == "ValidationException":
+            raise BadRequestError(f"Invalid parameters: {error_msg}")
+        elif error_code == "ResourceNotFoundException":
+            raise NotFoundError(f"Blueprint not found: {error_msg}")
+        elif error_code == "AccessDeniedException":
+            raise UnauthorizedError(error_msg)
+        else:
+            raise ServiceError(f"Failed to delete blueprint: {error_msg}")
+    except Exception as e:
+        logger.exception("Error deleting blueprint")
+        raise ServiceError(f"Failed to delete blueprint: {str(e)}")
+
+
+@app.put("/blueprints/<blueprint_arn>")
+@tracer.capture_method
+def update_blueprint(blueprint_arn: str):
+    """
+    Update an existing blueprint.
+    Maps to the DataAutomationforBedrock.Client.update_blueprint method.
+    """
+    user_id = app.current_event.request_context.authorizer.claims.get("sub")
+    if not user_id:
+        raise UnauthorizedError("User ID not found in claims")
+
+    try:
+        # Parse request body
+        body = app.current_event.json_body
+
+        # Extract required fields
+        schema = body.get("schema")
+
+        # Validate required fields
+        if not schema:
+            raise BadRequestError("schema is required")
+
+        # Extract optional fields
+        blueprint_stage = body.get("blueprintStage")
+        encryption_config = body.get("encryptionConfiguration")
+
+        # Build request parameters
+        request_params = {"blueprintArn": blueprint_arn, "schema": schema}
+
+        if blueprint_stage:
+            request_params["blueprintStage"] = blueprint_stage
+
+        if encryption_config:
+            request_params["encryptionConfiguration"] = encryption_config
+
+        # Call Bedrock Data Automation API
+        response = bedrock_data_automation.update_blueprint(**request_params)
+
+        return Response(
+            status_code=200, headers=CORS_HEADERS, body=json.dumps(response)
+        )
+
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "Unknown")
+        error_msg = e.response.get("Error", {}).get("Message", str(e))
+
+        logger.error(f"Error updating blueprint: {error_code} - {error_msg}")
+
+        if error_code == "ValidationException":
+            raise BadRequestError(f"Invalid parameters: {error_msg}")
+        elif error_code == "ResourceNotFoundException":
+            raise NotFoundError(f"Blueprint not found: {error_msg}")
+        elif error_code == "AccessDeniedException":
+            raise UnauthorizedError(error_msg)
+        else:
+            raise ServiceError(f"Failed to update blueprint: {error_msg}")
+    except json.JSONDecodeError:
+        raise BadRequestError("Invalid JSON in request body")
+    except Exception as e:
+        logger.exception("Error updating blueprint")
+        raise ServiceError(f"Failed to update blueprint: {str(e)}")
+
+
 @logger.inject_lambda_context(
     correlation_id_path=correlation_paths.API_GATEWAY_REST, log_event=True
 )
@@ -503,7 +785,12 @@ def get_download_url(job_id: str):
 def lambda_handler(event: Dict[str, Any], context: LambdaContext) -> Dict[str, Any]:
     try:
         return app.resolve(event, context)
-    except (BadRequestError, NotFoundError, UnauthorizedError, ServiceError) as e:
+    except (
+        BadRequestError,
+        NotFoundError,
+        UnauthorizedError,
+        ServiceError,
+    ) as e:
         logger.exception(str(e))
         return {
             "statusCode": e.status_code,

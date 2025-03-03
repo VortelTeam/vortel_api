@@ -437,6 +437,472 @@ paths:
               method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
               method.response.header.Access-Control-Allow-Origin: "'*'"
               method.response.header.Access-Control-Allow-Credentials: "'true'"
+  /blueprints:
+    get:
+      summary: List all available blueprints
+      security:
+        - UserPool: []
+      parameters:
+        - name: maxResults
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Maximum number of results to return
+        - name: nextToken
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination token
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved blueprint list
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blueprints:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        blueprintArn:
+                          type: string
+                        blueprintVersion:
+                          type: string
+                        blueprintStage:
+                          type: string
+                          enum: [DEVELOPMENT, LIVE]
+                        blueprintName:
+                          type: string
+                        creationTime:
+                          type: string
+                          format: date-time
+                        lastModifiedTime:
+                          type: string
+                          format: date-time
+                  nextToken:
+                    type: string
+        "403":
+          description: Unauthorized or Access Denied
+        "404":
+          description: Resource Not Found
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+    post:
+      summary: Create a new blueprint
+      security:
+        - UserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - blueprintName
+                - type
+                - schema
+              properties:
+                blueprintName:
+                  type: string
+                  description: Name of the Blueprint
+                type:
+                  type: string
+                  enum: [DOCUMENT, IMAGE]
+                  description: Type of the Blueprint
+                blueprintStage:
+                  type: string
+                  enum: [DEVELOPMENT, LIVE]
+                  description: Stage of the Blueprint
+                schema:
+                  type: string
+                  description: Schema of the blueprint
+                tags:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - key
+                      - value
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        type: string
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "201":
+          description: Blueprint created successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blueprint:
+                    type: object
+                    properties:
+                      blueprintArn:
+                        type: string
+                      schema:
+                        type: string
+                      type:
+                        type: string
+                        enum: [DOCUMENT, IMAGE]
+                      creationTime:
+                        type: string
+                        format: date-time
+                      lastModifiedTime:
+                        type: string
+                        format: date-time
+                      blueprintName:
+                        type: string
+                      blueprintVersion:
+                        type: string
+                      blueprintStage:
+                        type: string
+                        enum: [DEVELOPMENT, LIVE]
+                      kmsKeyId:
+                        type: string
+                      kmsEncryptionContext:
+                        type: object
+                        additionalProperties:
+                          type: string
+        "400":
+          description: Bad request (missing required fields or validation error)
+        "403":
+          description: Unauthorized or Access Denied
+        "409":
+          description: Conflict (blueprint with same name already exists)
+        "500":
+          description: Internal server error
 
+  /blueprints/{blueprintArn}:
+    get:
+      summary: Get details for a specific blueprint
+      security:
+        - UserPool: []
+      parameters:
+        - name: blueprintArn
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ARN of the blueprint
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved blueprint details
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blueprint:
+                    type: object
+                    properties:
+                      blueprintArn:
+                        type: string
+                      schema:
+                        type: string
+                      type:
+                        type: string
+                        enum: [DOCUMENT, IMAGE]
+                      creationTime:
+                        type: string
+                        format: date-time
+                      lastModifiedTime:
+                        type: string
+                        format: date-time
+                      blueprintName:
+                        type: string
+                      blueprintVersion:
+                        type: string
+                      blueprintStage:
+                        type: string
+                        enum: [DEVELOPMENT, LIVE]
+                      kmsKeyId:
+                        type: string
+                      kmsEncryptionContext:
+                        type: object
+                        additionalProperties:
+                          type: string
+        "403":
+          description: Unauthorized or Access Denied
+        "404":
+          description: Blueprint not found
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+    delete:
+      summary: Delete a specific blueprint
+      security:
+        - UserPool: []
+      parameters:
+        - name: blueprintArn
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ARN of the blueprint to delete
+        - name: blueprintVersion
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional field to delete a specific Blueprint version
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Blueprint deleted successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized or Access Denied
+        "404":
+          description: Blueprint not found
+        "500":
+          description: Internal server error
+    put:
+      summary: Update an existing blueprint
+      security:
+        - UserPool: []
+      parameters:
+        - name: blueprintArn
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ARN of the blueprint to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - schema
+              properties:
+                schema:
+                  type: string
+                  description: Updated schema of the blueprint
+                blueprintStage:
+                  type: string
+                  enum: [DEVELOPMENT, LIVE]
+                  description: Stage of the Blueprint
+                encryptionConfiguration:
+                  type: object
+                  properties:
+                    kmsKeyId:
+                      type: string
+                      description: KMS Key Identifier
+                    kmsEncryptionContext:
+                      type: object
+                      additionalProperties:
+                        type: string
+                      description: KMS Encryption Context
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Blueprint updated successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blueprint:
+                    type: object
+                    properties:
+                      blueprintArn:
+                        type: string
+                      schema:
+                        type: string
+                      type:
+                        type: string
+                        enum: [DOCUMENT, IMAGE]
+                      creationTime:
+                        type: string
+                        format: date-time
+                      lastModifiedTime:
+                        type: string
+                        format: date-time
+                      blueprintName:
+                        type: string
+                      blueprintVersion:
+                        type: string
+                      blueprintStage:
+                        type: string
+                        enum: [DEVELOPMENT, LIVE]
+                      kmsKeyId:
+                        type: string
+                      kmsEncryptionContext:
+                        type: object
+                        additionalProperties:
+                          type: string
+        "400":
+          description: Bad request (validation error)
+        "403":
+          description: Unauthorized or Access Denied
+        "404":
+          description: Blueprint not found
+        "409":
+          description: Conflict
+        "500":
+          description: Internal server error
 x-amazon-apigateway-binary-media-types:
   - "*/*"
