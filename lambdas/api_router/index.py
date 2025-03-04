@@ -651,10 +651,16 @@ def get_blueprint(blueprint_id: str):
         arn = f"arn:aws:bedrock:{os.environ['AWS_REGION']}:{aws_account_id}:blueprint/{blueprint_id}"
         blueprint = bedrock_data_automation.get_blueprint(blueprintArn=arn)
 
-        blueprint_copy = blueprint.copy()
-        for key, value in blueprint.items():
-            if isinstance(value, datetime):
-                blueprint_copy[key] = value.isoformat()
+        def convert_datetime(obj):
+            if isinstance(obj, dict):
+                return {key: convert_datetime(value) for key, value in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_datetime(item) for item in obj]
+            elif isinstance(obj, datetime):
+                return obj.isoformat()
+            return obj
+
+        blueprint_copy = convert_datetime(blueprint)
 
         # Return the serialized blueprint
         return Response(
