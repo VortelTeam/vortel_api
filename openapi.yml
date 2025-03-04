@@ -1,0 +1,921 @@
+﻿openapi: 3.0.0
+info:
+  title: File Storage API
+  description: API for managing files in S3 through Lambda with Cognito authentication
+  version: 1.0.0
+components:
+  securitySchemes:
+    UserPool:
+      type: "apiKey"
+      name: "Authorization"
+      in: "header"
+      "x-amazon-apigateway-authtype": "cognito_user_pools"
+      "x-amazon-apigateway-authorizer":
+        type: "cognito_user_pools"
+        providerARNs: ${cognito_user_pool_arns}
+paths:
+  /files:
+    get:
+      summary: List all files for the authenticated user
+      security:
+        - UserPool: []
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved file list
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+  /upload-url:
+    post:
+      summary: Get pre-signed URL for file upload with metadata
+      description: |
+        Generates a pre-signed URL for direct S3 upload with embedded metadata.
+        Client-provided metadata will be stored with the file in S3.
+      security:
+        - UserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fileName:
+                  type: string
+                  description: Original file name for the upload
+                  example: "document.pdf"
+                contentType:
+                  type: string
+                  description: MIME type of the file
+                  example: "application/pdf"
+                metadata:
+                  type: object
+                  description: Optional key-value pairs of custom metadata
+                  additionalProperties:
+                    type: string
+                  example:
+                    category: "financial"
+                    sensitive: "true"
+              required:
+                - fileName
+                - contentType
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        payloadFormatVersion: "2.0"
+      responses:
+        "204":
+          description: Pre-signed URL generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl:
+                    type: string
+                    example: "https://{bucket}.s3.amazonaws.com/"
+                  fileId:
+                    type: string
+                    example: "a1b2c3d4"
+                  fields:
+                    type: object
+                    description: >
+                      Form fields including S3 metadata prefixed with 'x-amz-meta-'.
+                      These MUST be included with the upload request.
+                    properties:
+                      key:
+                        type: string
+                        example: "user123/a1b2c3d4"
+                      Policy:
+                        type: string
+                        example: "eyJleHBpcmF0aW9uIjo..."
+                      x-amz-algorithm:
+                        type: string
+                        example: "AWS4-HMAC-SHA256"
+                      x-amz-credential:
+                        type: string
+                        example: "ASIAXXX/20230801/us-east-1/s3/aws4_request"
+                      x-amz-date:
+                        type: string
+                        example: "20230801T000000Z"
+                      x-amz-meta-filename:
+                        type: string
+                        example: "document.pdf"
+                      x-amz-meta-category:
+                        type: string
+                        example: "financial"
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "400":
+          description: Bad request (missing required fields or invalid JSON)
+        "403":
+          description: Unauthorized request
+        "500":
+          description: Internal server error
+
+  /files/{filename}:
+    delete:
+      summary: Delete a specific file
+      security:
+        - UserPool: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: File deleted successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "404":
+          description: File not found
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+  /jobs:
+    post:
+      summary: Submit a batch inference job
+      security:
+        - UserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Job submitted successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+    get:
+      summary: List all jobs for the authenticated user
+      security:
+        - UserPool: []
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved job list
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+  /jobs/{job_id}/download:
+    get:
+      summary: Download a specific file in JSON or CSV format
+      security:
+        - UserPool: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          required: false
+          description: Format to download the file (json or csv)
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved file
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  presigned_url:
+                    type: string
+                    description: URL to download the file
+                  format:
+                    type: string
+                    enum: [json, csv]
+                    description: Format of the file
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized
+        "404":
+          description: File not found
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+  /blueprints:
+    get:
+      summary: List all available blueprints
+      security:
+        - UserPool: []
+      parameters:
+        - name: maxResults
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Maximum number of results to return
+        - name: nextToken
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Pagination token
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved blueprint list
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blueprints:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        blueprintArn:
+                          type: string
+                        blueprintVersion:
+                          type: string
+                        blueprintStage:
+                          type: string
+                          enum: [DEVELOPMENT, LIVE]
+                        blueprintName:
+                          type: string
+                        creationTime:
+                          type: string
+                          format: date-time
+                        lastModifiedTime:
+                          type: string
+                          format: date-time
+                  nextToken:
+                    type: string
+        "403":
+          description: Unauthorized or Access Denied
+        "404":
+          description: Resource Not Found
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+    post:
+      summary: Create a new blueprint
+      security:
+        - UserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - blueprintName
+                - type
+                - schema
+              properties:
+                blueprintName:
+                  type: string
+                  description: Name of the Blueprint
+                type:
+                  type: string
+                  enum: [DOCUMENT, IMAGE]
+                  description: Type of the Blueprint
+                blueprintStage:
+                  type: string
+                  enum: [DEVELOPMENT, LIVE]
+                  description: Stage of the Blueprint
+                schema:
+                  type: string
+                  description: Schema of the blueprint
+                tags:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - key
+                      - value
+                    properties:
+                      key:
+                        type: string
+                      value:
+                        type: string
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "201":
+          description: Blueprint created successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blueprint:
+                    type: object
+                    properties:
+                      blueprintArn:
+                        type: string
+                      schema:
+                        type: string
+                      type:
+                        type: string
+                        enum: [DOCUMENT, IMAGE]
+                      creationTime:
+                        type: string
+                        format: date-time
+                      lastModifiedTime:
+                        type: string
+                        format: date-time
+                      blueprintName:
+                        type: string
+                      blueprintVersion:
+                        type: string
+                      blueprintStage:
+                        type: string
+                        enum: [DEVELOPMENT, LIVE]
+                      kmsKeyId:
+                        type: string
+                      kmsEncryptionContext:
+                        type: object
+                        additionalProperties:
+                          type: string
+        "400":
+          description: Bad request (missing required fields or validation error)
+        "403":
+          description: Unauthorized or Access Denied
+        "409":
+          description: Conflict (blueprint with same name already exists)
+        "500":
+          description: Internal server error
+
+  /blueprints/{blueprintArn}:
+    get:
+      summary: Get details for a specific blueprint
+      security:
+        - UserPool: []
+      parameters:
+        - name: blueprintId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Id of the blueprint
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Successfully retrieved blueprint details
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blueprint:
+                    type: object
+                    properties:
+                      blueprintId:
+                        type: string
+                      schema:
+                        type: string
+                      type:
+                        type: string
+                        enum: [DOCUMENT, IMAGE]
+                      creationTime:
+                        type: string
+                        format: date-time
+                      lastModifiedTime:
+                        type: string
+                        format: date-time
+                      blueprintName:
+                        type: string
+                      blueprintVersion:
+                        type: string
+                      blueprintStage:
+                        type: string
+                        enum: [DEVELOPMENT, LIVE]
+                      kmsKeyId:
+                        type: string
+                      kmsEncryptionContext:
+                        type: object
+                        additionalProperties:
+                          type: string
+        "403":
+          description: Unauthorized or Access Denied
+        "404":
+          description: Blueprint not found
+        "500":
+          description: Internal server error
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      responses:
+        200:
+          description: Default response for CORS method
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content: {}
+      x-amazon-apigateway-integration:
+        contentHandling: "CONVERT_TO_TEXT"
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        passthroughBehavior: "never"
+        responses:
+          default:
+            statusCode: "200"
+            contentHandling: "CONVERT_TO_TEXT"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token, filename'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Credentials: "'true'"
+    delete:
+      summary: Delete a specific blueprint
+      security:
+        - UserPool: []
+      parameters:
+        - name: blueprintArn
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ARN of the blueprint to delete
+        - name: blueprintVersion
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional field to delete a specific Blueprint version
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Blueprint deleted successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+        "403":
+          description: Unauthorized or Access Denied
+        "404":
+          description: Blueprint not found
+        "500":
+          description: Internal server error
+    put:
+      summary: Update an existing blueprint
+      security:
+        - UserPool: []
+      parameters:
+        - name: blueprintArn
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ARN of the blueprint to update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - schema
+              properties:
+                schema:
+                  type: string
+                  description: Updated schema of the blueprint
+                blueprintStage:
+                  type: string
+                  enum: [DEVELOPMENT, LIVE]
+                  description: Stage of the Blueprint
+                encryptionConfiguration:
+                  type: object
+                  properties:
+                    kmsKeyId:
+                      type: string
+                      description: KMS Key Identifier
+                    kmsEncryptionContext:
+                      type: object
+                      additionalProperties:
+                        type: string
+                      description: KMS Encryption Context
+      x-amazon-apigateway-integration:
+        uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
+        httpMethod: POST
+        type: aws_proxy
+        passthroughBehavior: when_no_match
+      responses:
+        "200":
+          description: Blueprint updated successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: "string"
+            Access-Control-Allow-Headers:
+              schema:
+                type: "string"
+            Access-Control-Allow-Methods:
+              schema:
+                type: "string"
+            Access-Control-Allow-Credentials:
+              schema:
+                type: "boolean"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  blueprint:
+                    type: object
+                    properties:
+                      blueprintArn:
+                        type: string
+                      schema:
+                        type: string
+                      type:
+                        type: string
+                        enum: [DOCUMENT, IMAGE]
+                      creationTime:
+                        type: string
+                        format: date-time
+                      lastModifiedTime:
+                        type: string
+                        format: date-time
+                      blueprintName:
+                        type: string
+                      blueprintVersion:
+                        type: string
+                      blueprintStage:
+                        type: string
+                        enum: [DEVELOPMENT, LIVE]
+                      kmsKeyId:
+                        type: string
+                      kmsEncryptionContext:
+                        type: object
+                        additionalProperties:
+                          type: string
+        "400":
+          description: Bad request (validation error)
+        "403":
+          description: Unauthorized or Access Denied
+        "404":
+          description: Blueprint not found
+        "409":
+          description: Conflict
+        "500":
+          description: Internal server error
+x-amazon-apigateway-binary-media-types:
+  - "*/*"
