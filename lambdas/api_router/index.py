@@ -647,16 +647,10 @@ def get_blueprint(blueprint_id: str):
 
     try:
         # Call list_blueprints with the specific ARN
-        aws_account_id = os.environ.get('AWS_ACCOUNT_ID', '')
+        aws_account_id = os.environ.get("AWS_ACCOUNT_ID", "")
         arn = f"arn:aws:bedrock:{os.environ['AWS_REGION']}:{aws_account_id}:blueprint/{blueprint_id}"
-        response = bedrock_data_automation.list_blueprints(blueprintArn=arn)
+        blueprint = bedrock_data_automation.get_blueprint(blueprintArn=arn)
 
-        # Check if blueprint was found
-        if not response.get("blueprints"):
-            raise NotFoundError(f"Blueprint with Id {blueprint_id} not found")
-
-        # Convert datetime objects to ISO format strings in the blueprint
-        blueprint = response["blueprints"][0]
         blueprint_copy = blueprint.copy()
         for key, value in blueprint.items():
             if isinstance(value, datetime):
