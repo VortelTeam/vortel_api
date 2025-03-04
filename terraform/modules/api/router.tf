@@ -1,7 +1,7 @@
 ﻿locals {
   lambda_name = "api-router"
 }
-
+data "aws_caller_identity" "current" {}
 module "lambda_router" {
   source        = "terraform-aws-modules/lambda/aws"
   function_name = "${var.project_name}-${var.environment}-${local.lambda_name}"
@@ -24,6 +24,7 @@ module "lambda_router" {
     POWERTOOLS_METRICS_NAMESPACE = "APIGateway"
     JOBS_QUEUE_URL               = var.jobs_queue.name
     JOBS_TABLE                   = var.jobs_status_table.name
+    AWS_ACCOUNT_ID               = data.aws_caller_identity.current.account_id
   }
 
   role_name                = "${var.project_name}-${var.environment}-${local.lambda_name}-role"

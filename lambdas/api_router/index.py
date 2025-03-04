@@ -633,9 +633,9 @@ def create_blueprint():
         raise ServiceError(f"Failed to create blueprint: {str(e)}")
 
 
-@app.get("/blueprints/<blueprint_arn>")
+@app.get("/blueprints/<blueprint_id>")
 @tracer.capture_method
-def get_blueprint(blueprint_arn: str):
+def get_blueprint(blueprint_id: str):
     """
     Get details for a specific blueprint.
     This API doesn't have a direct counterpart in the SDK but we can build it
@@ -647,11 +647,13 @@ def get_blueprint(blueprint_arn: str):
 
     try:
         # Call list_blueprints with the specific ARN
-        response = bedrock_data_automation.list_blueprints(blueprintArn=blueprint_arn)
+        aws_account_id = os.environ.get('AWS_ACCOUNT_ID', '')
+        arn = f"arn:aws:bedrock:{os.environ['AWS_REGION']}:{aws_account_id}:blueprint/{blueprint_id}"
+        response = bedrock_data_automation.list_blueprints(blueprintArn=arn)
 
         # Check if blueprint was found
         if not response.get("blueprints"):
-            raise NotFoundError(f"Blueprint with ARN {blueprint_arn} not found")
+            raise NotFoundError(f"Blueprint with Id {blueprint_id} not found")
 
         # Return the first (and should be only) blueprint in the list
         return Response(

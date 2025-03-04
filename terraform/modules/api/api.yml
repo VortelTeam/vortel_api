@@ -668,12 +668,12 @@ paths:
       security:
         - UserPool: []
       parameters:
-        - name: blueprintArn
+        - name: blueprintId
           in: path
           required: true
           schema:
             type: string
-          description: ARN of the blueprint
+          description: Id of the blueprint
       x-amazon-apigateway-integration:
         uri: arn:aws:apigateway:${region}:lambda:path/2015-03-31/functions/${lambda_arn}/invocations
         httpMethod: POST
@@ -703,7 +703,7 @@ paths:
                   blueprint:
                     type: object
                     properties:
-                      blueprintArn:
+                      blueprintId:
                         type: string
                       schema:
                         type: string
