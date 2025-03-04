@@ -86,9 +86,7 @@ module "lambda_router" {
         "bedrock:ListBlueprints",
         "bedrock:CreateBlueprintVersion",
       ],
-      resources = [
-        "bedrock:*"
-      ]
+      resources = ["*"]
     }
   }
 }
