@@ -83,6 +83,7 @@ module "lambda_router" {
       actions = [
         "bedrock:CreateBlueprint",
         "bedrock:UpdateBlueprint",
+        "bedrock:GetBlueprint",
         "bedrock:DeleteBlueprint",
         "bedrock:ListBlueprints",
         "bedrock:CreateBlueprintVersion",
