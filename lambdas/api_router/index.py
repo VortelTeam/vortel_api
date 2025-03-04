@@ -655,11 +655,18 @@ def get_blueprint(blueprint_id: str):
         if not response.get("blueprints"):
             raise NotFoundError(f"Blueprint with Id {blueprint_id} not found")
 
-        # Return the first (and should be only) blueprint in the list
+        # Convert datetime objects to ISO format strings in the blueprint
+        blueprint = response["blueprints"][0]
+        blueprint_copy = blueprint.copy()
+        for key, value in blueprint.items():
+            if isinstance(value, datetime):
+                blueprint_copy[key] = value.isoformat()
+
+        # Return the serialized blueprint
         return Response(
             status_code=200,
             headers=CORS_HEADERS,
-            body=json.dumps({"blueprint": response["blueprints"][0]}),
+            body=json.dumps({"blueprint": blueprint_copy}),
         )
 
     except ClientError as e:
