@@ -1,4 +1,5 @@
 ﻿import base64
+import datetime
 import os
 import simplejson as json
 import uuid
@@ -525,11 +526,19 @@ def list_blueprints():
         response = bedrock_data_automation.list_blueprints(**request_params)
 
         # Transform response to match our API format
+        # Convert datetime objects to ISO format strings in blueprints
+        blueprints = []
+        for blueprint in response.get("blueprints", []):
+            blueprint_copy = blueprint.copy()
+            for key, value in blueprint_copy.items():
+                if isinstance(value, datetime):
+                    blueprint_copy[key] = value.isoformat()
+            blueprints.append(blueprint_copy)
+
         result = {
-            "blueprints": response.get("blueprints", []),
+            "blueprints": blueprints,
             "nextToken": response.get("nextToken"),
         }
-
         return Response(status_code=200, headers=CORS_HEADERS, body=json.dumps(result))
 
     except ClientError as e:
