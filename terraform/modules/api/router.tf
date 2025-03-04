@@ -77,5 +77,18 @@ module "lambda_router" {
         "${var.jobs_status_table.arn}/index/*"
       ]
     }
+    crud_da_blueprints = {
+      effect = "Allow",
+      actions = [
+        "bedrock:CreateBlueprint",
+        "bedrock:UpdateBlueprint",
+        "bedrock:DeleteBlueprint",
+        "bedrock:ListBlueprints",
+        "bedrock:CreateBlueprintVersion",
+      ],
+      resources = [
+        "bedrock:*"
+      ]
+    }
   }
 }
