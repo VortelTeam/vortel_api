@@ -30,7 +30,7 @@ s3_client = boto3.client("s3")
 dynamodb = boto3.resource("dynamodb")
 job_table = dynamodb.Table(os.environ["JOBS_TABLE"])
 sqs_client = boto3.client("sqs")
-bedrock_data_automation = boto3.client("dataautomationbedrock")
+bedrock_data_automation = boto3.client("bedrock-data-automation")
 
 INPUT_BUCKET_NAME = os.environ["INPUT_BUCKET_NAME"]
 OUTPUT_BUCKET_NAME = os.environ["OUTPUT_BUCKET_NAME"]
